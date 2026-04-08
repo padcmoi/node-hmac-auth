@@ -57,7 +57,7 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 });
 
 app.useBodyParser("json");
-app.use("/secure", hmacAuth.createExpressMiddleware());
+app.use("/secure", hmacAuth.createMiddleware());
 ```
 
 ## 5) Controller Example
@@ -127,3 +127,5 @@ Headers used by verifier:
 - `x-timestamp`
 - `x-nonce`
 - `x-signature`
+
+Note: `createExpressMiddleware()` is still available as a backward-compatible alias.

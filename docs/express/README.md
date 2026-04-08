@@ -62,7 +62,7 @@ app.use(
 ## 5) Protect Routes With HMAC Middleware
 
 ```ts
-app.use("/secure", hmacAuth.createExpressMiddleware());
+app.use("/secure", hmacAuth.createMiddleware());
 
 app.get("/secure/get", (req, res) => {
   res.json({
@@ -132,3 +132,5 @@ Headers used by verifier:
 - `x-timestamp`
 - `x-nonce`
 - `x-signature`
+
+Note: `createExpressMiddleware()` is still available as a backward-compatible alias.

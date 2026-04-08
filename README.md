@@ -65,7 +65,8 @@ SHA256(BODY)
 ### Verify helpers
 
 - `verifyHmacRequest(input)`: low-level verifier (framework-agnostic)
-- `createExpressMiddleware(options?)`: framework adapter for Express
+- `createMiddleware(options?)`: generic middleware factory (recommended name)
+- `createExpressMiddleware(options?)`: alias kept for backward compatibility
 
 ### Fetch helpers
 

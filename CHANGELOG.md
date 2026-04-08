@@ -6,6 +6,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 
 ## [0.3.0] - 2026-04-08
 
+- `feat(middleware): add createMiddleware as a generic alias of createExpressMiddleware`
 - `docs(readme): refactor root README into library glossary and move operational usage to framework docs`
 - `docs(express): add dedicated Express install/config/usage guide`
 - `docs(nestjs): add dedicated NestJS install/config/usage guide`
