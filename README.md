@@ -2,252 +2,46 @@
 
 Simple, reusable HMAC authentication for Node.js APIs.
 
-Redis is mandatory.  
-`clientId` is read automatically from request headers by the middleware/verifier.
+Redis is mandatory.
 
-## What This Library Does
+[![npm version](https://img.shields.io/npm/v/%40naskot%2Fnode-hmac-auth)](https://www.npmjs.com/package/@naskot/node-hmac-auth)
+[![TypeScript Ready](https://img.shields.io/badge/TypeScript-Ready-3178C6?logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
+[![Node >= 18](https://img.shields.io/badge/node-%3E%3D18-339933?logo=node.js&logoColor=white)](https://nodejs.org/)
+[![License: MIT](https://img.shields.io/badge/license-MIT-green.svg)](./LICENSE)
 
-- Validates HMAC requests using `x-client-id`, `x-timestamp`, `x-nonce`, `x-signature`
-- Loads client credentials from Redis
-- Supports a custom Redis namespace at initialization
-- Provides an Express middleware
-- Provides HMAC fetch helpers for outbound calls
-- Supports optional credential expiration (`expiresAt`)
-- If `expiresAt` is not set, credential is lifetime (no expiry)
+## Documentation
 
-## Installation
+- Install, config, and usage guide (Express): [docs/express/README.md](./docs/express/README.md)
+- Install, config, and usage guide (NestJS): [docs/nestjs/README.md](./docs/nestjs/README.md)
+- Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
-```bash
-npm install @naskot/node-hmac-auth
-```
+## Compatibility
 
-## 1) Initialize With Redis Config + Custom Namespace
+- TypeScript: native typings included (`dist/index.d.ts`)
+- JavaScript runtimes: Node.js `>= 18`
+- Module formats: ESM + CommonJS
+- Framework support: framework-agnostic core + Express adapter
+- Storage: Redis required
 
-```ts
-import { createClient } from "redis";
-import { initializeHmacAuth } from "@naskot/node-hmac-auth";
+## Redis Key Glossary
 
-const redis = createClient({
-  url: process.env.REDIS_URL,
-  username: process.env.REDIS_USERNAME, // optional
-  password: process.env.REDIS_PASSWORD, // optional
-});
+For namespace `my_company_prod`:
 
-await redis.connect();
-
-const hmacAuth = initializeHmacAuth({
-  redis,
-  namespace: "my_company_prod", // choose any namespace you want
-  maxSkewMs: 5 * 60 * 1000, // optional
-  defaultSecretLengthBytes: 32, // optional
-  secretToken: process.env.HMAC_SECRET_TOKEN, // optional at API level, but strongly recommended for production security
-});
-```
-
-Redis keys used for that namespace:
-
-- `my_company_prod:clients` (hash of client credentials)
+- `my_company_prod:clients` (hash map of client credentials)
 - `my_company_prod:nonce:*` (anti-replay nonce keys)
 
-### `secretToken` (strongly recommended)
+## Header Glossary
 
-- Without `secretToken`: `secretHash = SHA256(plainSecret)`
-- With `secretToken`: `secretHash = HMAC_SHA256(secretToken, plainSecret)`
-- Same `plainSecret` + same `secretToken` => same deterministic `secretHash`
-- Same `plainSecret` + different `secretToken` => different `secretHash`
-
-This applies to all helpers that hash plain secrets: `clients.create`, `clients.setSecret`, `clients.regenerateSecret`, and fetch helpers when signing from a plain secret.
-
-## 2) Use As Express Middleware (clientId Auto-detected In Headers)
-
-The middleware automatically reads:
+Incoming signed requests are validated with:
 
 - `x-client-id`
-- `x-timestamp`
+- `x-timestamp` (epoch ms)
 - `x-nonce`
 - `x-signature`
 
-If `x-client-id` is missing -> `401`  
-If client does not exist in Redis -> `401`  
-If signature does not match -> `401`
+## Signature Glossary
 
-```ts
-import express from "express";
-import { captureRawBody } from "@naskot/node-hmac-auth";
-
-const app = express();
-app.use(express.json({ verify: captureRawBody }));
-
-app.use(hmacAuth.createExpressMiddleware());
-
-app.get("/secure", (req, res) => {
-  const auth = (req as any).hmacAuth;
-  res.json({ ok: true, clientId: auth.clientId });
-});
-```
-
-## 3) Use HMAC Fetch Helpers
-
-Important for production:
-
-- Do not hardcode a plain secret in app code.
-- Set `secretToken` in `initializeHmacAuth` (strongly recommended).
-- Read client material from Redis and sign with `secretHash` (`secretIsHashed: true`).
-- If you sign from a plain secret, `secretToken` (from `initializeHmacAuth`) is automatically used.
-
-### `signedFetch` (Redis-backed signing material)
-
-```ts
-import { signedFetch } from "@naskot/node-hmac-auth";
-
-const client = await hmacAuth.clients.get("client_mobile");
-if (!client) {
-  throw new Error("client_mobile not found in Redis");
-}
-
-await signedFetch("https://remote-api.example.com/orders", {
-  method: "POST",
-  body: { amount: 100 },
-  clientId: "client_mobile",
-  secret: client.secretHash,
-  secretIsHashed: true,
-});
-```
-
-### `createSignedFetchClient` (Redis-backed preconfigured fetch)
-
-```ts
-const CLIENT_ID = "client_mobile";
-
-async function callPeer(url: string, options: any = {}) {
-  // Read signing material from Redis for each call
-  // so key rotations / admin changes are picked up immediately.
-  const client = await hmacAuth.clients.get(CLIENT_ID);
-  if (!client) {
-    throw new Error(`${CLIENT_ID} not found in Redis`);
-  }
-
-  const apiFetch = hmacAuth.createSignedFetchClient({
-    clientId: CLIENT_ID,
-    secret: client.secretHash,
-    secretIsHashed: true,
-  });
-
-  return apiFetch(url, options);
-}
-
-await callPeer("https://remote-api.example.com/orders", { method: "GET" });
-```
-
-This preconfigured fetch automatically injects `x-client-id` and computes signature from Redis-backed credential data.
-
-## 3.1) Two-API Usage Example (Express)
-
-A common setup is two APIs with separate Redis namespaces:
-
-- `api_1` uses `hmac-lab-api1`
-- `api_2` uses `hmac-lab-api2`
-
-Each API can expose:
-
-- public route: `/public/call-peer-post`
-- protected route: `/secure/post`
-
-The public route signs and forwards to the peer protected route, then returns:
-
-```json
-{
-  "ok": true,
-  "caller": "api_1",
-  "upstreamStatus": 200,
-  "upstreamBody": {
-    "ok": true,
-    "api": "api_2",
-    "mode": "secure"
-  }
-}
-```
-
-`upstreamBody` is the response body returned by the peer API.
-
-If signatures do not match, the peer protected route returns `401` (for example `BAD_SIGNATURE` or `UNKNOWN_CLIENT`).
-
-## Optional Expiration (Default = Lifetime)
-
-Each client credential can have an optional `expiresAt` timestamp.
-
-- No `expiresAt` => credential is lifetime
-- With `expiresAt` => credential expires at that date/time and verification returns `401` after expiry
-
-## 4 Required Client Helpers (Admin)
-
-The library exposes 4 helpers for client lifecycle:
-
-1. `create` (create HMAC credentials and return full info)
-2. `listClientIds` (list all client IDs in API namespace)
-3. `delete` (remove one client ID)
-4. `regenerateSecret` (rotate/regenerate one client secret)
-
-### 1. Create HMAC Credentials (returns details)
-
-```ts
-const created = await hmacAuth.clients.create({
-  clientId: "partner_a",
-  expiresAt: null, // optional, null/undefined = lifetime
-  // optional: provide a plain secret yourself (library hashes it)
-  // plainSecret: "helloworld",
-});
-
-console.log(created);
-// {
-//   clientId,
-//   secret,      <-- plain secret (show once, store securely)
-//   secretHash,
-//   createdAt,
-//   updatedAt,
-//   expiresAt
-// }
-```
-
-If `secretToken` is set during initialization, `plainSecret` is hashed with that token (deterministic for the same token + secret pair).
-
-### 2. See All API clientIds
-
-```ts
-const ids = await hmacAuth.clients.listClientIds();
-console.log(ids);
-```
-
-### 3. Delete One clientId
-
-```ts
-await hmacAuth.clients.delete("partner_a");
-```
-
-### 4. Regenerate Secret For a clientId
-
-```ts
-const rotated = await hmacAuth.clients.regenerateSecret("partner_a", {
-  // optional:
-  // expiresAt: Date.now() + 24 * 60 * 60 * 1000,
-  // preserveExpiresAt: true
-});
-
-console.log(rotated.secret); // new plain secret (show once, store securely)
-```
-
-## Low-level Verify (Non-Express)
-
-```ts
-const verified = await hmacAuth.verifyHmacRequest({
-  method,
-  path,
-  headers,
-  rawBody,
-});
-```
-
-## Signature Payload
+Signing payload:
 
 ```txt
 METHOD\n
@@ -256,3 +50,36 @@ TIMESTAMP_MS\n
 NONCE\n
 SHA256(BODY)
 ```
+
+## API Glossary
+
+### Initialization
+
+- `initializeHmacAuth(options)`
+  - `options.redis` (required)
+  - `options.namespace?`
+  - `options.maxSkewMs?`
+  - `options.defaultSecretLengthBytes?`
+  - `options.secretToken?`
+
+### Verify helpers
+
+- `verifyHmacRequest(input)`: low-level verifier (framework-agnostic)
+- `createExpressMiddleware(options?)`: framework adapter for Express
+
+### Fetch helpers
+
+- `buildSignedHeaders(input)`
+- `signedFetch(url, options)`
+- `createSignedFetchClient(options)`
+
+### Credential helpers
+
+- `clients.create({ clientId, plainSecret?, expiresAt?, secretLengthBytes? })`
+- `clients.listClientIds()`
+- `clients.get(clientId)`
+- `clients.delete(clientId)`
+- `clients.regenerateSecret(clientId, options?)`
+- `clients.setSecret(clientId, plainSecret, expiresAt?)`
+- `clients.setSecretHash(clientId, secretHash, expiresAt?)`
+- `clients.getSecretHash(clientId)`
