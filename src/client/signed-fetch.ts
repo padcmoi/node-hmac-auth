@@ -10,6 +10,7 @@ export interface BuildSignedHeadersInput {
   clientId: string;
   secret: string;
   secretIsHashed?: boolean;
+  hashToken?: string;
   nonce?: string;
   timestamp?: number;
   headers?: HeadersInit;
@@ -22,6 +23,7 @@ export interface SignedFetchOptions extends Omit<RequestInit, "headers" | "body"
   clientId: string;
   secret: string;
   secretIsHashed?: boolean;
+  hashToken?: string;
   nonce?: string;
   timestamp?: number;
   fetchImpl?: typeof fetch;
@@ -31,6 +33,7 @@ export interface CreateSignedFetchClientOptions {
   clientId: string;
   secret: string;
   secretIsHashed?: boolean;
+  hashToken?: string;
   defaultHeaders?: HeadersInit;
   fetchImpl?: typeof fetch;
 }
@@ -75,7 +78,7 @@ export function buildSignedHeaders(input: BuildSignedHeadersInput): Headers {
   const headers = new Headers(input.headers);
   const timestamp = input.timestamp ?? Date.now();
   const nonce = input.nonce ?? generateNonce();
-  const signingSecret = input.secretIsHashed ? input.secret : hashClientSecret(input.secret);
+  const signingSecret = input.secretIsHashed ? input.secret : hashClientSecret(input.secret, input.hashToken);
   const signature = signRequest({
     method: input.method,
     path: normalizePath(input.url),
@@ -110,6 +113,7 @@ export async function signedFetch(url: string, options: SignedFetchOptions): Pro
     clientId: options.clientId,
     secret: options.secret,
     secretIsHashed: options.secretIsHashed,
+    hashToken: options.hashToken,
     nonce: options.nonce,
     timestamp: options.timestamp,
     headers,
@@ -138,7 +142,7 @@ function mergeHeaders(base?: HeadersInit, extra?: HeadersInit): Headers {
 }
 
 export function createSignedFetchClient(options: CreateSignedFetchClientOptions) {
-  const signingSecret = options.secretIsHashed ? options.secret : hashClientSecret(options.secret);
+  const signingSecret = options.secretIsHashed ? options.secret : hashClientSecret(options.secret, options.hashToken);
 
   return async function signedClientFetch(url: string, callOptions: SignedFetchClientCallOptions = {}): Promise<Response> {
     return signedFetch(url, {

@@ -40,6 +40,7 @@ const hmacAuth = initializeHmacAuth({
   namespace: "my_company_prod", // choose any namespace you want
   maxSkewMs: 5 * 60 * 1000, // optional
   defaultSecretLengthBytes: 32, // optional
+  secretToken: process.env.HMAC_SECRET_TOKEN, // optional at API level, but strongly recommended for production security
 });
 ```
 
@@ -47,6 +48,15 @@ Redis keys used for that namespace:
 
 - `my_company_prod:clients` (hash of client credentials)
 - `my_company_prod:nonce:*` (anti-replay nonce keys)
+
+### `secretToken` (strongly recommended)
+
+- Without `secretToken`: `secretHash = SHA256(plainSecret)`
+- With `secretToken`: `secretHash = HMAC_SHA256(secretToken, plainSecret)`
+- Same `plainSecret` + same `secretToken` => same deterministic `secretHash`
+- Same `plainSecret` + different `secretToken` => different `secretHash`
+
+This applies to all helpers that hash plain secrets: `clients.create`, `clients.setSecret`, `clients.regenerateSecret`, and fetch helpers when signing from a plain secret.
 
 ## 2) Use As Express Middleware (clientId Auto-detected In Headers)
 
@@ -81,7 +91,9 @@ app.get("/secure", (req, res) => {
 Important for production:
 
 - Do not hardcode a plain secret in app code.
+- Set `secretToken` in `initializeHmacAuth` (strongly recommended).
 - Read client material from Redis and sign with `secretHash` (`secretIsHashed: true`).
+- If you sign from a plain secret, `secretToken` (from `initializeHmacAuth`) is automatically used.
 
 ### `signedFetch` (Redis-backed signing material)
 
@@ -196,6 +208,8 @@ console.log(created);
 //   expiresAt
 // }
 ```
+
+If `secretToken` is set during initialization, `plainSecret` is hashed with that token (deterministic for the same token + secret pair).
 
 ### 2. See All API clientIds
 

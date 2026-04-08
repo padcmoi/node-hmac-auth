@@ -32,6 +32,7 @@ export interface InitializeHmacAuthOptions {
   namespace?: string;
   maxSkewMs?: number;
   defaultSecretLengthBytes?: number;
+  secretToken?: string;
 }
 
 export interface VerifyHmacWithRedisInput {

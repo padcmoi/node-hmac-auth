@@ -326,6 +326,82 @@ describe("HMAC auth", () => {
     ).rejects.toThrow("plainSecret cannot be empty");
   });
 
+  it("supports secretToken for deterministic tokenized secret hashes", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacAuth({
+      redis,
+      namespace: "tenant_tokenized",
+      maxSkewMs: 5000,
+      secretToken: "abc",
+    });
+
+    const first = await auth.clients.create({
+      clientId: "client_a",
+      plainSecret: "helloworld",
+    });
+    const second = await auth.clients.create({
+      clientId: "client_b",
+      plainSecret: "helloworld",
+    });
+
+    expect(first.secretHash).toBe(second.secretHash);
+    expect(first.secretHash).toBe(hashClientSecret("helloworld", "abc"));
+    expect(first.secretHash).not.toBe(hashClientSecret("helloworld"));
+  });
+
+  it("verifies tokenized signatures only when using the same secretToken", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacAuth({
+      redis,
+      namespace: "tenant_token_verify",
+      maxSkewMs: 5000,
+      secretToken: "abc",
+    });
+    await auth.clients.setSecret("app_a", "secret_a");
+
+    const timestamp = Date.now();
+    const headersWithToken = buildSignedHeaders({
+      method: "GET",
+      url: "/health",
+      body: "",
+      clientId: "app_a",
+      secret: "secret_a",
+      hashToken: "abc",
+      timestamp,
+      nonce: "nonce_tokenized",
+    });
+
+    await expect(
+      auth.verifyHmacRequest({
+        method: "GET",
+        path: "/health",
+        headers: headersToRecord(headersWithToken),
+        rawBody: "",
+        now: timestamp,
+      }),
+    ).resolves.toMatchObject({ clientId: "app_a" });
+
+    const headersWithoutToken = buildSignedHeaders({
+      method: "GET",
+      url: "/health",
+      body: "",
+      clientId: "app_a",
+      secret: "secret_a",
+      timestamp,
+      nonce: "nonce_no_token",
+    });
+
+    await expect(
+      auth.verifyHmacRequest({
+        method: "GET",
+        path: "/health",
+        headers: headersToRecord(headersWithoutToken),
+        rawBody: "",
+        now: timestamp,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
+  });
+
   it("signs fetch requests with helper", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
       return new Response(null, { status: 204 });

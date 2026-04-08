@@ -2,7 +2,10 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import type { SignInput } from "./types.js";
 import { normalizePath } from "./utils.js";
 
-export function hashClientSecret(secret: string): string {
+export function hashClientSecret(secret: string, secretToken?: string): string {
+  if (secretToken != null && secretToken !== "") {
+    return createHmac("sha256", secretToken).update(secret).digest("hex");
+  }
   return createHash("sha256").update(secret).digest("hex");
 }
 
