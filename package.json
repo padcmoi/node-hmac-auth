@@ -2,6 +2,14 @@
   "name": "@naskot/node-hmac-auth",
   "version": "0.1.1",
   "description": "Simple and reusable HMAC auth for Node.js APIs (Express-friendly, framework-agnostic core).",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/padcmoi/node-hmac-auth"
+  },
+  "homepage": "https://github.com/padcmoi/node-hmac-auth",
+  "bugs": {
+    "url": "https://github.com/padcmoi/node-hmac-auth/issues"
+  },
   "license": "MIT",
   "type": "module",
   "main": "dist/index.cjs",
