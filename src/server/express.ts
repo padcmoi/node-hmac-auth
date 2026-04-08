@@ -10,6 +10,8 @@ export interface ExpressHmacMiddlewareOptions {
   onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
 }
 
+export type HmacMiddlewareOptions = ExpressHmacMiddlewareOptions;
+
 export function captureRawBody(req: { rawBody?: Buffer }, _res: unknown, buf: Buffer): void {
   req.rawBody = Buffer.from(buf);
 }
@@ -76,4 +78,8 @@ export function createExpressHmacMiddleware(options: ExpressHmacMiddlewareOption
       next(hmacError);
     }
   };
+}
+
+export function createHmacMiddleware(options: HmacMiddlewareOptions) {
+  return createExpressHmacMiddleware(options);
 }
