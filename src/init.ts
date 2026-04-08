@@ -56,6 +56,12 @@ function assertSecretLength(secretLengthBytes: number): void {
   }
 }
 
+function assertPlainSecret(secret: string): void {
+  if (!secret || !secret.trim()) {
+    throw new Error("plainSecret cannot be empty");
+  }
+}
+
 function mapCredential(clientId: string, record: StoredClientCredentialRecord): HmacClientCredential {
   return {
     clientId,
@@ -75,6 +81,7 @@ export interface InitializedHmacAuth {
   readonly redis: RedisLikeClient;
   readonly namespace: string;
   readonly maxSkewMs: number;
+  readonly secretToken?: string;
   verifyHmacRequest: (input: VerifyHmacWithRedisInput) => Promise<VerifiedRequest>;
   createExpressMiddleware: (options?: {
     attachAuthTo?: string;
@@ -106,6 +113,7 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
   const namespace = resolveNamespace(options.namespace);
   const maxSkewMs = options.maxSkewMs ?? DEFAULT_MAX_SKEW_MS;
   const defaultSecretLengthBytes = options.defaultSecretLengthBytes ?? DEFAULT_SECRET_LENGTH_BYTES;
+  const secretToken = options.secretToken;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
 
@@ -113,6 +121,7 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
     redis: options.redis,
     namespace,
     maxSkewMs,
+    secretToken,
     verifyHmacRequest: async (input) =>
       verifyHmacRequest({
         ...input,
@@ -128,13 +137,22 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
         attachAuthTo: middlewareOptions?.attachAuthTo,
         onError: middlewareOptions?.onError,
       }),
-    createSignedFetchClient: (clientOptions) => createSignedFetchClient(clientOptions),
+    createSignedFetchClient: (clientOptions) =>
+      createSignedFetchClient({
+        ...clientOptions,
+        hashToken: clientOptions.hashToken ?? secretToken,
+      }),
     clients: {
       create: async (createOptions) => {
         assertClientId(createOptions.clientId);
-        const secretLength = createOptions.secretLengthBytes ?? defaultSecretLengthBytes;
-        const secret = generateSecret(secretLength);
-        const secretHash = hashClientSecret(secret);
+        let secret: string;
+        if (createOptions.plainSecret !== undefined) {
+          assertPlainSecret(createOptions.plainSecret);
+          secret = createOptions.plainSecret;
+        } else {
+          secret = generateSecret(createOptions.secretLengthBytes ?? defaultSecretLengthBytes);
+        }
+        const secretHash = hashClientSecret(secret, secretToken);
         const now = Date.now();
         const record: StoredClientCredentialRecord = {
           secretHash,
@@ -181,7 +199,7 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
               : existing.expiresAt;
 
         const updatedRecord: StoredClientCredentialRecord = {
-          secretHash: hashClientSecret(secret),
+          secretHash: hashClientSecret(secret, secretToken),
           createdAt: existing.createdAt || now,
           updatedAt: now,
           expiresAt,
@@ -198,7 +216,7 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
         const now = Date.now();
         const existing = await credentialStore.getClientRecord(clientId);
         const record: StoredClientCredentialRecord = {
-          secretHash: hashClientSecret(secret),
+          secretHash: hashClientSecret(secret, secretToken),
           createdAt: existing?.createdAt || now,
           updatedAt: now,
           expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),

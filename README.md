@@ -40,6 +40,7 @@ const hmacAuth = initializeHmacAuth({
   namespace: "my_company_prod", // choose any namespace you want
   maxSkewMs: 5 * 60 * 1000, // optional
   defaultSecretLengthBytes: 32, // optional
+  secretToken: process.env.HMAC_SECRET_TOKEN, // optional at API level, but strongly recommended for production security
 });
 ```
 
@@ -47,6 +48,15 @@ Redis keys used for that namespace:
 
 - `my_company_prod:clients` (hash of client credentials)
 - `my_company_prod:nonce:*` (anti-replay nonce keys)
+
+### `secretToken` (strongly recommended)
+
+- Without `secretToken`: `secretHash = SHA256(plainSecret)`
+- With `secretToken`: `secretHash = HMAC_SHA256(secretToken, plainSecret)`
+- Same `plainSecret` + same `secretToken` => same deterministic `secretHash`
+- Same `plainSecret` + different `secretToken` => different `secretHash`
+
+This applies to all helpers that hash plain secrets: `clients.create`, `clients.setSecret`, `clients.regenerateSecret`, and fetch helpers when signing from a plain secret.
 
 ## 2) Use As Express Middleware (clientId Auto-detected In Headers)
 
@@ -81,7 +91,9 @@ app.get("/secure", (req, res) => {
 Important for production:
 
 - Do not hardcode a plain secret in app code.
+- Set `secretToken` in `initializeHmacAuth` (strongly recommended).
 - Read client material from Redis and sign with `secretHash` (`secretIsHashed: true`).
+- If you sign from a plain secret, `secretToken` (from `initializeHmacAuth`) is automatically used.
 
 ### `signedFetch` (Redis-backed signing material)
 
@@ -105,23 +117,60 @@ await signedFetch("https://remote-api.example.com/orders", {
 ### `createSignedFetchClient` (Redis-backed preconfigured fetch)
 
 ```ts
-const client = await hmacAuth.clients.get("client_mobile");
-if (!client) {
-  throw new Error("client_mobile not found in Redis");
+const CLIENT_ID = "client_mobile";
+
+async function callPeer(url: string, options: any = {}) {
+  // Read signing material from Redis for each call
+  // so key rotations / admin changes are picked up immediately.
+  const client = await hmacAuth.clients.get(CLIENT_ID);
+  if (!client) {
+    throw new Error(`${CLIENT_ID} not found in Redis`);
+  }
+
+  const apiFetch = hmacAuth.createSignedFetchClient({
+    clientId: CLIENT_ID,
+    secret: client.secretHash,
+    secretIsHashed: true,
+  });
+
+  return apiFetch(url, options);
 }
 
-const apiFetch = hmacAuth.createSignedFetchClient({
-  clientId: "client_mobile",
-  secret: client.secretHash,
-  secretIsHashed: true,
-});
-
-await apiFetch("https://remote-api.example.com/orders", {
-  method: "GET",
-});
+await callPeer("https://remote-api.example.com/orders", { method: "GET" });
 ```
 
 This preconfigured fetch automatically injects `x-client-id` and computes signature from Redis-backed credential data.
+
+## 3.1) Two-API Usage Example (Express)
+
+A common setup is two APIs with separate Redis namespaces:
+
+- `api_1` uses `hmac-lab-api1`
+- `api_2` uses `hmac-lab-api2`
+
+Each API can expose:
+
+- public route: `/public/call-peer-post`
+- protected route: `/secure/post`
+
+The public route signs and forwards to the peer protected route, then returns:
+
+```json
+{
+  "ok": true,
+  "caller": "api_1",
+  "upstreamStatus": 200,
+  "upstreamBody": {
+    "ok": true,
+    "api": "api_2",
+    "mode": "secure"
+  }
+}
+```
+
+`upstreamBody` is the response body returned by the peer API.
+
+If signatures do not match, the peer protected route returns `401` (for example `BAD_SIGNATURE` or `UNKNOWN_CLIENT`).
 
 ## Optional Expiration (Default = Lifetime)
 
@@ -145,6 +194,8 @@ The library exposes 4 helpers for client lifecycle:
 const created = await hmacAuth.clients.create({
   clientId: "partner_a",
   expiresAt: null, // optional, null/undefined = lifetime
+  // optional: provide a plain secret yourself (library hashes it)
+  // plainSecret: "helloworld",
 });
 
 console.log(created);
@@ -157,6 +208,8 @@ console.log(created);
 //   expiresAt
 // }
 ```
+
+If `secretToken` is set during initialization, `plainSecret` is hashed with that token (deterministic for the same token + secret pair).
 
 ### 2. See All API clientIds
 
