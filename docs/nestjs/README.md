@@ -12,7 +12,7 @@ npm install @naskot/node-hmac-auth @nestjs/common @nestjs/core @nestjs/platform-
 
 ```ts
 import { createClient } from "redis";
-import { initializeHmacAuth } from "@naskot/node-hmac-auth";
+import { initializeHmacHttpAuth } from "@naskot/node-hmac-auth";
 
 const redis = createClient({
   url: process.env.REDIS_URL, // ex: redis://user:password@127.0.0.1:6379
@@ -20,7 +20,7 @@ const redis = createClient({
 
 await redis.connect();
 
-const hmacAuth = initializeHmacAuth({
+const hmacAuth = initializeHmacHttpAuth({
   redis,
   namespace: "my-api-prod",
   maxSkewMs: 5 * 60 * 1000,
@@ -57,7 +57,7 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 });
 
 app.useBodyParser("json");
-app.use("/secure", hmacAuth.createMiddleware());
+app.use("/secure", hmacAuth.verifyHttpRequest);
 ```
 
 ## 5) Controller Example
@@ -87,7 +87,7 @@ export class AppController {
 
 ## 6) Public Route Calling a Secure Peer Route
 
-Read signing material from Redis (`secretHash`) at call time, then use `createSignedFetchClient`.
+Read signing material from Redis (`secretHash`) at call time, then use `createHttpSignedFetchClient`.
 
 ```ts
 const PEER_BASE_URL = process.env.PEER_BASE_URL ?? "http://127.0.0.1:3002";
@@ -99,7 +99,7 @@ async function callPeer(url: string, options: any = {}) {
     throw new Error(`${CLIENT_ID} not found in Redis`);
   }
 
-  const peerFetch = hmacAuth.createSignedFetchClient({
+  const peerFetch = hmacAuth.createHttpSignedFetchClient({
     clientId: CLIENT_ID,
     secret: client.secretHash,
     secretIsHashed: true,
@@ -128,4 +128,4 @@ Headers used by verifier:
 - `x-nonce`
 - `x-signature`
 
-Note: `createExpressMiddleware()` is still available as a backward-compatible alias.
+Note: `createExpressHttpMiddleware()` is available as explicit Express middleware naming.

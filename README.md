@@ -55,7 +55,7 @@ SHA256(BODY)
 
 ### Initialization
 
-- `initializeHmacAuth(options)`
+- `initializeHmacHttpAuth(options)` (recommended for HTTP routes + signed fetch)
   - `options.redis` (required)
   - `options.namespace?`
   - `options.maxSkewMs?`
@@ -64,15 +64,22 @@ SHA256(BODY)
 
 ### Verify helpers
 
-- `verifyHmacRequest(input)`: low-level verifier (framework-agnostic)
-- `createMiddleware(options?)`: generic middleware factory (recommended name)
-- `createExpressMiddleware(options?)`: alias kept for backward compatibility
+- `verifyHttpRequest(req, res, next)`: middleware usage (default middleware signature)
+- `verifyHttpSignature(input)`: low-level verifier usage (framework-agnostic input object)
+- `createHttpMiddleware(options?)`: generic middleware factory (recommended name)
+- `createExpressHttpMiddleware(options?)`: alias kept for backward compatibility
+
+Middleware example:
+
+```ts
+app.use("/secure", hmacAuth.verifyHttpRequest);
+```
 
 ### Fetch helpers
 
-- `buildSignedHeaders(input)`
-- `signedFetch(url, options)`
-- `createSignedFetchClient(options)`
+- `buildHttpSignedHeaders(input)`
+- `signedHttpFetch(url, options)`
+- `createHttpSignedFetchClient(options)`
 
 ### Credential helpers
 

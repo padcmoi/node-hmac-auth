@@ -1,13 +1,13 @@
 import { randomBytes } from "node:crypto";
 import {
-  createSignedFetchClient,
-  type CreateSignedFetchClientOptions,
-  type SignedFetchClientCallOptions,
+  createHttpSignedFetchClient,
+  type CreateHttpSignedFetchClientOptions,
+  type SignedHttpFetchClientCallOptions,
 } from "./client/signed-fetch.js";
 import { HmacAuthError } from "./errors.js";
 import { hashClientSecret } from "./hmac.js";
-import { createExpressHmacMiddleware } from "./server/express.js";
-import { verifyHmacRequest } from "./server/verify.js";
+import { createExpressHttpHmacMiddleware } from "./server/express.js";
+import { verifyHttpSignature as verifyHttpSignatureCore } from "./server/verify.js";
 import {
   RedisCredentialStore,
   assertRedisClient,
@@ -19,10 +19,10 @@ import type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
-  InitializeHmacAuthOptions,
+  InitializeHmacHttpAuthOptions,
   RegenerateHmacSecretOptions,
-  VerifiedRequest,
-  VerifyHmacWithRedisInput,
+  VerifiedHttpRequest,
+  VerifyHttpWithRedisInput,
 } from "./types.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
@@ -77,25 +77,26 @@ function generateSecret(secretLengthBytes: number): string {
   return randomBytes(secretLengthBytes).toString("hex");
 }
 
-export interface InitializedHmacAuth {
+export interface InitializedHmacHttpAuth {
   readonly redis: RedisLikeClient;
   readonly namespace: string;
   readonly maxSkewMs: number;
   readonly secretToken?: string;
-  verifyHmacRequest: (input: VerifyHmacWithRedisInput) => Promise<VerifiedRequest>;
-  createMiddleware: (options?: {
+  verifyHttpRequest: (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
+  verifyHttpSignature: (input: VerifyHttpWithRedisInput) => Promise<VerifiedHttpRequest>;
+  createHttpMiddleware: (options?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
   }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
-  createExpressMiddleware: (options?: {
+  createExpressHttpMiddleware: (options?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
   }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
-  createSignedFetchClient: (
-    options: CreateSignedFetchClientOptions,
-  ) => (url: string, options?: SignedFetchClientCallOptions) => Promise<Response>;
+  createHttpSignedFetchClient: (
+    options: CreateHttpSignedFetchClientOptions,
+  ) => (url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>;
   clients: {
     create: (options: CreateHmacClientOptions) => Promise<HmacClientCredentialWithSecret>;
     listClientIds: () => Promise<string[]>;
@@ -108,7 +109,7 @@ export interface InitializedHmacAuth {
   };
 }
 
-export function initializeHmacAuth(options: InitializeHmacAuthOptions): InitializedHmacAuth {
+export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): InitializedHmacHttpAuth {
   if (!options?.redis) {
     throw new Error("Redis connection is mandatory");
   }
@@ -121,35 +122,39 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
   const secretToken = options.secretToken;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
-  const middlewareFactory = (middlewareOptions?: {
+  const verifyHttpSignature = async (input: VerifyHttpWithRedisInput): Promise<VerifiedHttpRequest> =>
+    verifyHttpSignatureCore({
+      ...input,
+      redis: options.redis,
+      namespace,
+      maxSkewMs: input.maxSkewMs ?? maxSkewMs,
+    });
+
+  const httpMiddlewareFactory = (middlewareOptions?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
   }) =>
-    createExpressHmacMiddleware({
+    createExpressHttpHmacMiddleware({
       redis: options.redis,
       namespace,
       maxSkewMs: middlewareOptions?.maxSkewMs ?? maxSkewMs,
       attachAuthTo: middlewareOptions?.attachAuthTo,
       onError: middlewareOptions?.onError,
     });
+  const verifyHttpRequest = httpMiddlewareFactory();
 
   return {
     redis: options.redis,
     namespace,
     maxSkewMs,
     secretToken,
-    verifyHmacRequest: async (input) =>
-      verifyHmacRequest({
-        ...input,
-        redis: options.redis,
-        namespace,
-        maxSkewMs: input.maxSkewMs ?? maxSkewMs,
-      }),
-    createMiddleware: middlewareFactory,
-    createExpressMiddleware: middlewareFactory,
-    createSignedFetchClient: (clientOptions) =>
-      createSignedFetchClient({
+    verifyHttpRequest,
+    verifyHttpSignature,
+    createHttpMiddleware: httpMiddlewareFactory,
+    createExpressHttpMiddleware: httpMiddlewareFactory,
+    createHttpSignedFetchClient: (clientOptions) =>
+      createHttpSignedFetchClient({
         ...clientOptions,
         hashToken: clientOptions.hashToken ?? secretToken,
       }),

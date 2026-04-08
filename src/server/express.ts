@@ -1,6 +1,6 @@
 import { HmacAuthError } from "../errors.js";
 import type { RedisLikeClient } from "../stores/redis.js";
-import { verifyHmacRequest } from "./verify.js";
+import { verifyHttpSignature } from "./verify.js";
 
 export interface ExpressHmacMiddlewareOptions {
   redis: RedisLikeClient;
@@ -10,7 +10,7 @@ export interface ExpressHmacMiddlewareOptions {
   onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
 }
 
-export type HmacMiddlewareOptions = ExpressHmacMiddlewareOptions;
+export type HttpHmacMiddlewareOptions = ExpressHmacMiddlewareOptions;
 
 export function captureRawBody(req: { rawBody?: Buffer }, _res: unknown, buf: Buffer): void {
   req.rawBody = Buffer.from(buf);
@@ -39,7 +39,7 @@ function toHmacError(error: unknown): HmacAuthError {
   return new HmacAuthError("INTERNAL_ERROR", "Internal auth error", 500);
 }
 
-export function createExpressHmacMiddleware(options: ExpressHmacMiddlewareOptions) {
+export function createExpressHttpHmacMiddleware(options: ExpressHmacMiddlewareOptions) {
   if (!options?.redis) {
     throw new Error("Redis connection is mandatory");
   }
@@ -48,7 +48,7 @@ export function createExpressHmacMiddleware(options: ExpressHmacMiddlewareOption
 
   return async function hmacMiddleware(req: any, res: any, next: (error?: unknown) => void) {
     try {
-      const verified = await verifyHmacRequest({
+      const verified = await verifyHttpSignature({
         method: req.method,
         path: req.originalUrl ?? req.url,
         headers: req.headers,
@@ -80,6 +80,6 @@ export function createExpressHmacMiddleware(options: ExpressHmacMiddlewareOption
   };
 }
 
-export function createHmacMiddleware(options: HmacMiddlewareOptions) {
-  return createExpressHmacMiddleware(options);
+export function createHttpHmacMiddleware(options: HttpHmacMiddlewareOptions) {
+  return createExpressHttpHmacMiddleware(options);
 }

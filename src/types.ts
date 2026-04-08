@@ -9,7 +9,7 @@ export interface SignInput {
   secret: string;
 }
 
-export interface VerifyRequestInput {
+export interface VerifyHttpSignatureInput {
   method: string;
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -27,7 +27,9 @@ export interface VerifiedRequest {
   signature: string;
 }
 
-export interface InitializeHmacAuthOptions {
+export type VerifiedHttpRequest = VerifiedRequest;
+
+export interface InitializeHmacHttpAuthOptions {
   redis: RedisLikeClient;
   namespace?: string;
   maxSkewMs?: number;
@@ -35,7 +37,7 @@ export interface InitializeHmacAuthOptions {
   secretToken?: string;
 }
 
-export interface VerifyHmacWithRedisInput {
+export interface VerifyHttpWithRedisInput {
   method: string;
   path: string;
   headers: Record<string, string | string[] | undefined>;

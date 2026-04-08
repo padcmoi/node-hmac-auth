@@ -2,16 +2,18 @@ export { HmacAuthError } from "./errors.js";
 export { buildSigningPayload, hashBody, hashClientSecret, safeEqualHex, signRequest } from "./hmac.js";
 
 export {
-  buildSignedHeaders,
-  createSignedFetchClient,
-  signedFetch,
-  type CreateSignedFetchClientOptions,
-  type SignedFetchClientCallOptions,
+  buildHttpSignedHeaders,
+  createHttpSignedFetchClient,
+  signedHttpFetch,
+  type BuildHttpSignedHeadersInput,
+  type CreateHttpSignedFetchClientOptions,
+  type SignedHttpFetchClientCallOptions,
+  type SignedHttpFetchOptions,
 } from "./client/signed-fetch.js";
-export { initializeHmacAuth, type InitializedHmacAuth } from "./init.js";
+export { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "./init.js";
 
-export { captureRawBody, createExpressHmacMiddleware, createHmacMiddleware } from "./server/express.js";
-export { verifyHmacRequest } from "./server/verify.js";
+export { captureRawBody, createExpressHttpHmacMiddleware, createHttpHmacMiddleware } from "./server/express.js";
+export { verifyHttpSignature } from "./server/verify.js";
 
 export {
   buildRedisNamespaceKeys,
@@ -25,10 +27,11 @@ export type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
-  InitializeHmacAuthOptions,
+  InitializeHmacHttpAuthOptions,
   RegenerateHmacSecretOptions,
   SignInput,
+  VerifiedHttpRequest,
   VerifiedRequest,
-  VerifyHmacWithRedisInput,
-  VerifyRequestInput,
+  VerifyHttpSignatureInput,
+  VerifyHttpWithRedisInput,
 } from "./types.js";
