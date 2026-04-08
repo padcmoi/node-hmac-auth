@@ -11,6 +11,8 @@ export {
   type SignedHttpFetchOptions,
 } from "./client/signed-fetch.js";
 export { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "./init.js";
+export { initializeHmacMessageAuth, type InitializedHmacMessageAuth } from "./message/init.js";
+export { buildMessageSigningPayload, signMessage, verifyMessage } from "./message/signature.js";
 
 export { captureRawBody, createExpressHttpHmacMiddleware, createHttpHmacMiddleware } from "./server/express.js";
 export { verifyHttpSignature } from "./server/verify.js";
@@ -28,10 +30,16 @@ export type {
   HmacClientCredential,
   HmacClientCredentialWithSecret,
   InitializeHmacHttpAuthOptions,
+  InitializeHmacMessageAuthOptions,
   RegenerateHmacSecretOptions,
+  SignedMessage,
   SignInput,
+  SignMessageInput,
+  SignMessageWithRedisInput,
   VerifiedHttpRequest,
   VerifiedRequest,
   VerifyHttpSignatureInput,
   VerifyHttpWithRedisInput,
+  VerifyMessageInput,
+  VerifyMessageWithRedisInput,
 } from "./types.js";

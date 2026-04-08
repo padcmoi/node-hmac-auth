@@ -84,3 +84,63 @@ export function isJsonObjectBody(value: unknown): value is Record<string, unknow
 
   return true;
 }
+
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+
+  const prototype = Object.getPrototypeOf(value);
+  return prototype === Object.prototype || prototype === null;
+}
+
+function sortObjectKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => sortObjectKeysDeep(item));
+  }
+
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
+
+  if (!isPlainObject(value)) {
+    return value;
+  }
+
+  const sortedEntries = Object.entries(value).sort(([left], [right]) => left.localeCompare(right));
+  const result: Record<string, unknown> = {};
+
+  for (const [key, childValue] of sortedEntries) {
+    result[key] = sortObjectKeysDeep(childValue);
+  }
+
+  return result;
+}
+
+export function toMessageString(message: unknown): string {
+  if (message == null) {
+    return "";
+  }
+
+  if (typeof message === "string") {
+    return message;
+  }
+
+  if (Buffer.isBuffer(message)) {
+    return message.toString("utf8");
+  }
+
+  if (message instanceof Uint8Array) {
+    return Buffer.from(message).toString("utf8");
+  }
+
+  if (message instanceof URLSearchParams) {
+    return message.toString();
+  }
+
+  if (typeof message === "object") {
+    return JSON.stringify(sortObjectKeysDeep(message));
+  }
+
+  return String(message);
+}

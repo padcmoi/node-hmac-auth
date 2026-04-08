@@ -10,6 +10,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 - `feat(init): remove initializeHmacAuth alias and keep initializeHmacHttpAuth as the only init entrypoint`
 - `feat(http): rename verify and middleware helpers to explicit HTTP names (verifyHttpRequest, verifyHttpSignature, createHttpMiddleware)`
 - `feat(http): rename fetch signing helpers to explicit HTTP names (buildHttpSignedHeaders, signedHttpFetch, createHttpSignedFetchClient)`
+- `feat(message): add dedicated initializeHmacMessageAuth with signMessage/verifyMessage for async message flows`
 - `docs(init): update Express and NestJS guides to use initializeHmacHttpAuth`
 
 ## [0.3.0] - 2026-04-08

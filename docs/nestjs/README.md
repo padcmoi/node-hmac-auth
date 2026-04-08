@@ -129,3 +129,30 @@ Headers used by verifier:
 - `x-signature`
 
 Note: `createExpressHttpMiddleware()` is available as explicit Express middleware naming.
+
+## 8) Sign and Verify Messages
+
+For async message transports (queues/events), use message helpers instead of HTTP helpers.
+
+```ts
+import { initializeHmacMessageAuth } from "@naskot/node-hmac-auth";
+
+const hmacMessageAuth = initializeHmacMessageAuth({
+  redis,
+  namespace: "my-api-prod-messages",
+  secretToken: process.env.HMAC_SECRET_TOKEN,
+});
+
+const signed = await hmacMessageAuth.signMessage({
+  clientId: "client_mobile",
+  message: { event: "order.created", id: 42 },
+});
+
+await hmacMessageAuth.verifyMessage({
+  clientId: "client_mobile",
+  message: { event: "order.created", id: 42 },
+  signature: signed.signature,
+});
+```
+
+Message verification intentionally does not enforce timestamp skew checks or anti-replay.
