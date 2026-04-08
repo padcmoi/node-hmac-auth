@@ -105,23 +105,60 @@ await signedFetch("https://remote-api.example.com/orders", {
 ### `createSignedFetchClient` (Redis-backed preconfigured fetch)
 
 ```ts
-const client = await hmacAuth.clients.get("client_mobile");
-if (!client) {
-  throw new Error("client_mobile not found in Redis");
+const CLIENT_ID = "client_mobile";
+
+async function callPeer(url: string, options: any = {}) {
+  // Read signing material from Redis for each call
+  // so key rotations / admin changes are picked up immediately.
+  const client = await hmacAuth.clients.get(CLIENT_ID);
+  if (!client) {
+    throw new Error(`${CLIENT_ID} not found in Redis`);
+  }
+
+  const apiFetch = hmacAuth.createSignedFetchClient({
+    clientId: CLIENT_ID,
+    secret: client.secretHash,
+    secretIsHashed: true,
+  });
+
+  return apiFetch(url, options);
 }
 
-const apiFetch = hmacAuth.createSignedFetchClient({
-  clientId: "client_mobile",
-  secret: client.secretHash,
-  secretIsHashed: true,
-});
-
-await apiFetch("https://remote-api.example.com/orders", {
-  method: "GET",
-});
+await callPeer("https://remote-api.example.com/orders", { method: "GET" });
 ```
 
 This preconfigured fetch automatically injects `x-client-id` and computes signature from Redis-backed credential data.
+
+## 3.1) Two-API Usage Example (Express)
+
+A common setup is two APIs with separate Redis namespaces:
+
+- `api_1` uses `hmac-lab-api1`
+- `api_2` uses `hmac-lab-api2`
+
+Each API can expose:
+
+- public route: `/public/call-peer-post`
+- protected route: `/secure/post`
+
+The public route signs and forwards to the peer protected route, then returns:
+
+```json
+{
+  "ok": true,
+  "caller": "api_1",
+  "upstreamStatus": 200,
+  "upstreamBody": {
+    "ok": true,
+    "api": "api_2",
+    "mode": "secure"
+  }
+}
+```
+
+`upstreamBody` is the response body returned by the peer API.
+
+If signatures do not match, the peer protected route returns `401` (for example `BAD_SIGNATURE` or `UNKNOWN_CLIENT`).
 
 ## Optional Expiration (Default = Lifetime)
 
