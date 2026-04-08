@@ -182,6 +182,8 @@ The library exposes 4 helpers for client lifecycle:
 const created = await hmacAuth.clients.create({
   clientId: "partner_a",
   expiresAt: null, // optional, null/undefined = lifetime
+  // optional: provide a plain secret yourself (library hashes it)
+  // plainSecret: "helloworld",
 });
 
 console.log(created);

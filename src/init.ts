@@ -56,6 +56,12 @@ function assertSecretLength(secretLengthBytes: number): void {
   }
 }
 
+function assertPlainSecret(secret: string): void {
+  if (!secret || !secret.trim()) {
+    throw new Error("plainSecret cannot be empty");
+  }
+}
+
 function mapCredential(clientId: string, record: StoredClientCredentialRecord): HmacClientCredential {
   return {
     clientId,
@@ -132,8 +138,13 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
     clients: {
       create: async (createOptions) => {
         assertClientId(createOptions.clientId);
-        const secretLength = createOptions.secretLengthBytes ?? defaultSecretLengthBytes;
-        const secret = generateSecret(secretLength);
+        let secret: string;
+        if (createOptions.plainSecret !== undefined) {
+          assertPlainSecret(createOptions.plainSecret);
+          secret = createOptions.plainSecret;
+        } else {
+          secret = generateSecret(createOptions.secretLengthBytes ?? defaultSecretLengthBytes);
+        }
         const secretHash = hashClientSecret(secret);
         const now = Date.now();
         const record: StoredClientCredentialRecord = {

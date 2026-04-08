@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from "vitest";
-import { buildSignedHeaders, createSignedFetchClient, initializeHmacAuth, signedFetch, verifyHmacRequest } from "../src/index.js";
+import {
+  buildSignedHeaders,
+  createSignedFetchClient,
+  hashClientSecret,
+  initializeHmacAuth,
+  signedFetch,
+  verifyHmacRequest,
+} from "../src/index.js";
 
 function headersToRecord(headers: Headers): Record<string, string> {
   return Object.fromEntries(Array.from(headers.entries()));
@@ -284,6 +291,39 @@ describe("HMAC auth", () => {
     await auth.clients.delete("client_admin");
     const deleted = await auth.clients.get("client_admin");
     expect(deleted).toBeNull();
+  });
+
+  it("supports create with provided plainSecret and deterministic hash", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacAuth({ redis, namespace: "tenant_plain_secret", maxSkewMs: 5000 });
+
+    const first = await auth.clients.create({
+      clientId: "client_a",
+      plainSecret: "helloworld",
+    });
+    const second = await auth.clients.create({
+      clientId: "client_b",
+      plainSecret: "helloworld",
+    });
+
+    expect(first.secret).toBe("helloworld");
+    expect(second.secret).toBe("helloworld");
+    expect(first.secretHash).toBe(second.secretHash);
+    expect(first.secretHash).toBe(hashClientSecret("helloworld"));
+    expect((await auth.clients.get("client_a"))?.secretHash).toBe(first.secretHash);
+    expect((await auth.clients.get("client_b"))?.secretHash).toBe(second.secretHash);
+  });
+
+  it("rejects create when plainSecret is empty", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacAuth({ redis, namespace: "tenant_empty_secret", maxSkewMs: 5000 });
+
+    await expect(
+      auth.clients.create({
+        clientId: "client_empty",
+        plainSecret: "   ",
+      }),
+    ).rejects.toThrow("plainSecret cannot be empty");
   });
 
   it("signs fetch requests with helper", async () => {

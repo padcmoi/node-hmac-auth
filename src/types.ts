@@ -59,6 +59,7 @@ export interface CreateHmacClientOptions {
   clientId: string;
   expiresAt?: number | Date | null;
   secretLengthBytes?: number;
+  plainSecret?: string;
 }
 
 export interface RegenerateHmacSecretOptions {
