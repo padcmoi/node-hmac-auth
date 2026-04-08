@@ -10,9 +10,15 @@ permissions:
   contents: read
   id-token: write
 
+concurrency:
+  group: publish-npm-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   publish:
     runs-on: ubuntu-latest
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
     steps:
       - uses: actions/checkout@v4
 
@@ -21,8 +27,36 @@ jobs:
           node-version: '24'
           registry-url: 'https://registry.npmjs.org'
 
+      - name: Validate semver tag
+        id: tag
+        run: |
+          if [[ "${GITHUB_REF_NAME}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "is_semver=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${GITHUB_REF_NAME} is valid semver."
+          else
+            echo "is_semver=false" >> "$GITHUB_OUTPUT"
+            echo "Tag ${GITHUB_REF_NAME} is not strict semver, skipping publish."
+          fi
+
+      - name: Check package version matches tag
+        if: steps.tag.outputs.is_semver == 'true'
+        run: |
+          PKG_VERSION=$(node -p "require('./package.json').version")
+
+          if [ "${GITHUB_REF_NAME}" != "${PKG_VERSION}" ]; then
+            echo "Tag ${GITHUB_REF_NAME} does not match package.json version ${PKG_VERSION}."
+            exit 1
+          fi
+
+          echo "Tag ${GITHUB_REF_NAME} matches package.json version ${PKG_VERSION}."
+
       - run: npm ci
+        if: steps.tag.outputs.is_semver == 'true'
       - run: npm run check
+        if: steps.tag.outputs.is_semver == 'true'
       - run: npm test
+        if: steps.tag.outputs.is_semver == 'true'
       - run: npm run build
+        if: steps.tag.outputs.is_semver == 'true'
       - run: npm publish --access public
+        if: steps.tag.outputs.is_semver == 'true'
