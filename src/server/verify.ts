@@ -1,12 +1,12 @@
 import { HmacAuthError } from "../errors.js";
 import { safeEqualHex, signRequest } from "../hmac.js";
 import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../stores/redis.js";
-import type { VerifiedRequest, VerifyRequestInput } from "../types.js";
+import type { VerifiedHttpRequest, VerifyHttpSignatureInput } from "../types.js";
 import { getHeader, normalizePath, toBodyString } from "../utils.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
 
-export async function verifyHmacRequest(input: VerifyRequestInput): Promise<VerifiedRequest> {
+export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Promise<VerifiedHttpRequest> {
   assertRedisClient(input.redis);
 
   const namespace = resolveNamespace(input.namespace);

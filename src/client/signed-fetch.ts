@@ -3,7 +3,7 @@ import { generateNonce, isJsonObjectBody, normalizePath, toBodyString } from "..
 
 type SignedBody = string | Buffer | Uint8Array | URLSearchParams | Record<string, unknown> | null;
 
-export interface BuildSignedHeadersInput {
+export interface BuildHttpSignedHeadersInput {
   method: string;
   url: string;
   body: SignedBody;
@@ -16,7 +16,7 @@ export interface BuildSignedHeadersInput {
   headers?: HeadersInit;
 }
 
-export interface SignedFetchOptions extends Omit<RequestInit, "headers" | "body" | "method"> {
+export interface SignedHttpFetchOptions extends Omit<RequestInit, "headers" | "body" | "method"> {
   method?: string;
   headers?: HeadersInit;
   body?: SignedBody;
@@ -29,7 +29,7 @@ export interface SignedFetchOptions extends Omit<RequestInit, "headers" | "body"
   fetchImpl?: typeof fetch;
 }
 
-export interface CreateSignedFetchClientOptions {
+export interface CreateHttpSignedFetchClientOptions {
   clientId: string;
   secret: string;
   secretIsHashed?: boolean;
@@ -38,7 +38,10 @@ export interface CreateSignedFetchClientOptions {
   fetchImpl?: typeof fetch;
 }
 
-export type SignedFetchClientCallOptions = Omit<SignedFetchOptions, "clientId" | "secret" | "secretIsHashed" | "fetchImpl">;
+export type SignedHttpFetchClientCallOptions = Omit<
+  SignedHttpFetchOptions,
+  "clientId" | "secret" | "secretIsHashed" | "fetchImpl"
+>;
 
 function buildBodyForRequest(
   body: SignedBody,
@@ -74,7 +77,7 @@ function buildBodyForRequest(
   return { bodyForRequest: body as BodyInit, bodyForSignature: toBodyString(body) };
 }
 
-export function buildSignedHeaders(input: BuildSignedHeadersInput): Headers {
+export function buildHttpSignedHeaders(input: BuildHttpSignedHeadersInput): Headers {
   const headers = new Headers(input.headers);
   const timestamp = input.timestamp ?? Date.now();
   const nonce = input.nonce ?? generateNonce();
@@ -96,7 +99,7 @@ export function buildSignedHeaders(input: BuildSignedHeadersInput): Headers {
   return headers;
 }
 
-export async function signedFetch(url: string, options: SignedFetchOptions): Promise<Response> {
+export async function signedHttpFetch(url: string, options: SignedHttpFetchOptions): Promise<Response> {
   const fetchImpl = options.fetchImpl ?? globalThis.fetch;
   if (typeof fetchImpl !== "function") {
     throw new Error("No fetch implementation available");
@@ -106,7 +109,7 @@ export async function signedFetch(url: string, options: SignedFetchOptions): Pro
   const headers = new Headers(options.headers);
   const { bodyForRequest, bodyForSignature } = buildBodyForRequest(options.body ?? null, headers);
 
-  const signedHeaders = buildSignedHeaders({
+  const signedHeaders = buildHttpSignedHeaders({
     method,
     url,
     body: bodyForSignature,
@@ -141,11 +144,11 @@ function mergeHeaders(base?: HeadersInit, extra?: HeadersInit): Headers {
   return headers;
 }
 
-export function createSignedFetchClient(options: CreateSignedFetchClientOptions) {
+export function createHttpSignedFetchClient(options: CreateHttpSignedFetchClientOptions) {
   const signingSecret = options.secretIsHashed ? options.secret : hashClientSecret(options.secret, options.hashToken);
 
-  return async function signedClientFetch(url: string, callOptions: SignedFetchClientCallOptions = {}): Promise<Response> {
-    return signedFetch(url, {
+  return async function signedClientFetch(url: string, callOptions: SignedHttpFetchClientCallOptions = {}): Promise<Response> {
+    return signedHttpFetch(url, {
       ...callOptions,
       headers: mergeHeaders(options.defaultHeaders, callOptions.headers),
       clientId: options.clientId,
