@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.4.1] - 2026-04-08
+
+- `fix(ci): harden npm publish workflow with strict semver validation and package/tag version checks`
+- `fix(ci): skip publish when the target version is already on npm to avoid duplicate publish failures`
+
 ## [0.4.0] - 2026-04-08
 
 - `feat(init): add initializeHmacHttpAuth for HTTP route and signed fetch setup`
