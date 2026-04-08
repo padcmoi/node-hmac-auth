@@ -78,25 +78,42 @@ app.get("/secure", (req, res) => {
 
 ## 3) Use HMAC Fetch Helpers
 
-### `signedFetch` (pass client credentials each call)
+Important for production:
+
+- Do not hardcode a plain secret in app code.
+- Read client material from Redis and sign with `secretHash` (`secretIsHashed: true`).
+
+### `signedFetch` (Redis-backed signing material)
 
 ```ts
 import { signedFetch } from "@naskot/node-hmac-auth";
+
+const client = await hmacAuth.clients.get("client_mobile");
+if (!client) {
+  throw new Error("client_mobile not found in Redis");
+}
 
 await signedFetch("https://remote-api.example.com/orders", {
   method: "POST",
   body: { amount: 100 },
   clientId: "client_mobile",
-  secret: "plain_secret_here", // helper hashes it internally before signing
+  secret: client.secretHash,
+  secretIsHashed: true,
 });
 ```
 
-### `createSignedFetchClient` (preconfigured special fetch)
+### `createSignedFetchClient` (Redis-backed preconfigured fetch)
 
 ```ts
+const client = await hmacAuth.clients.get("client_mobile");
+if (!client) {
+  throw new Error("client_mobile not found in Redis");
+}
+
 const apiFetch = hmacAuth.createSignedFetchClient({
-  clientId: "client_mobile", // locally stored id
-  secret: "plain_secret_here", // locally stored secret
+  clientId: "client_mobile",
+  secret: client.secretHash,
+  secretIsHashed: true,
 });
 
 await apiFetch("https://remote-api.example.com/orders", {
@@ -104,7 +121,7 @@ await apiFetch("https://remote-api.example.com/orders", {
 });
 ```
 
-This preconfigured fetch automatically injects `x-client-id` and computes signature with the hashed secret.
+This preconfigured fetch automatically injects `x-client-id` and computes signature from Redis-backed credential data.
 
 ## Optional Expiration (Default = Lifetime)
 
