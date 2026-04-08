@@ -10,7 +10,7 @@ export {
 } from "./client/signed-fetch.js";
 export { initializeHmacAuth, type InitializedHmacAuth } from "./init.js";
 
-export { captureRawBody, createExpressHmacMiddleware } from "./server/express.js";
+export { captureRawBody, createExpressHmacMiddleware, createHmacMiddleware } from "./server/express.js";
 export { verifyHmacRequest } from "./server/verify.js";
 
 export {

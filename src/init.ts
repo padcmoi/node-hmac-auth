@@ -83,6 +83,11 @@ export interface InitializedHmacAuth {
   readonly maxSkewMs: number;
   readonly secretToken?: string;
   verifyHmacRequest: (input: VerifyHmacWithRedisInput) => Promise<VerifiedRequest>;
+  createMiddleware: (options?: {
+    attachAuthTo?: string;
+    maxSkewMs?: number;
+    onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+  }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
   createExpressMiddleware: (options?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
@@ -116,6 +121,18 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
   const secretToken = options.secretToken;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
+  const middlewareFactory = (middlewareOptions?: {
+    attachAuthTo?: string;
+    maxSkewMs?: number;
+    onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+  }) =>
+    createExpressHmacMiddleware({
+      redis: options.redis,
+      namespace,
+      maxSkewMs: middlewareOptions?.maxSkewMs ?? maxSkewMs,
+      attachAuthTo: middlewareOptions?.attachAuthTo,
+      onError: middlewareOptions?.onError,
+    });
 
   return {
     redis: options.redis,
@@ -129,14 +146,8 @@ export function initializeHmacAuth(options: InitializeHmacAuthOptions): Initiali
         namespace,
         maxSkewMs: input.maxSkewMs ?? maxSkewMs,
       }),
-    createExpressMiddleware: (middlewareOptions) =>
-      createExpressHmacMiddleware({
-        redis: options.redis,
-        namespace,
-        maxSkewMs: middlewareOptions?.maxSkewMs ?? maxSkewMs,
-        attachAuthTo: middlewareOptions?.attachAuthTo,
-        onError: middlewareOptions?.onError,
-      }),
+    createMiddleware: middlewareFactory,
+    createExpressMiddleware: middlewareFactory,
     createSignedFetchClient: (clientOptions) =>
       createSignedFetchClient({
         ...clientOptions,
