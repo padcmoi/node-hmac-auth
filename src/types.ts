@@ -9,7 +9,7 @@ export interface SignInput {
   secret: string;
 }
 
-export interface VerifyRequestInput {
+export interface VerifyHttpSignatureInput {
   method: string;
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -27,7 +27,9 @@ export interface VerifiedRequest {
   signature: string;
 }
 
-export interface InitializeHmacAuthOptions {
+export type VerifiedHttpRequest = VerifiedRequest;
+
+export interface InitializeHmacHttpAuthOptions {
   redis: RedisLikeClient;
   namespace?: string;
   maxSkewMs?: number;
@@ -35,7 +37,14 @@ export interface InitializeHmacAuthOptions {
   secretToken?: string;
 }
 
-export interface VerifyHmacWithRedisInput {
+export interface InitializeHmacMessageAuthOptions {
+  redis: RedisLikeClient;
+  namespace?: string;
+  defaultSecretLengthBytes?: number;
+  secretToken?: string;
+}
+
+export interface VerifyHttpWithRedisInput {
   method: string;
   path: string;
   headers: Record<string, string | string[] | undefined>;
@@ -67,4 +76,31 @@ export interface RegenerateHmacSecretOptions {
   expiresAt?: number | Date | null;
   secretLengthBytes?: number;
   preserveExpiresAt?: boolean;
+}
+
+export interface SignMessageInput {
+  clientId: string;
+  message: unknown;
+  secret: string;
+  secretIsHashed?: boolean;
+  hashToken?: string;
+}
+
+export interface SignedMessage {
+  clientId: string;
+  messageHash: string;
+  signature: string;
+}
+
+export interface VerifyMessageInput extends SignMessageInput {
+  signature: string;
+}
+
+export interface SignMessageWithRedisInput {
+  clientId: string;
+  message: unknown;
+}
+
+export interface VerifyMessageWithRedisInput extends SignMessageWithRedisInput {
+  signature: string;
 }

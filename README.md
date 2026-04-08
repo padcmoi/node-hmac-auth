@@ -55,24 +55,45 @@ SHA256(BODY)
 
 ### Initialization
 
-- `initializeHmacAuth(options)`
+- `initializeHmacHttpAuth(options)` (recommended for HTTP routes + signed fetch)
   - `options.redis` (required)
   - `options.namespace?`
   - `options.maxSkewMs?`
   - `options.defaultSecretLengthBytes?`
   - `options.secretToken?`
+- `initializeHmacMessageAuth(options)` (recommended for message signing + verification)
+  - `options.redis` (required)
+  - `options.namespace?`
+  - `options.defaultSecretLengthBytes?`
+  - `options.secretToken?`
 
 ### Verify helpers
 
-- `verifyHmacRequest(input)`: low-level verifier (framework-agnostic)
-- `createMiddleware(options?)`: generic middleware factory (recommended name)
-- `createExpressMiddleware(options?)`: alias kept for backward compatibility
+- `verifyHttpRequest(req, res, next)`: middleware usage (default middleware signature)
+- `verifyHttpSignature(input)`: low-level verifier usage (framework-agnostic input object)
+- `createHttpMiddleware(options?)`: generic middleware factory (recommended name)
+- `createExpressHttpMiddleware(options?)`: alias kept for backward compatibility
+
+Middleware example:
+
+```ts
+app.use("/secure", hmacAuth.verifyHttpRequest);
+```
 
 ### Fetch helpers
 
-- `buildSignedHeaders(input)`
-- `signedFetch(url, options)`
-- `createSignedFetchClient(options)`
+- `buildHttpSignedHeaders(input)`
+- `signedHttpFetch(url, options)`
+- `createHttpSignedFetchClient(options)`
+
+### Message helpers
+
+- `signMessage(input)`: low-level message signer (with explicit secret)
+- `verifyMessage(input)`: low-level message signature verifier
+- `hmacMessageAuth.signMessage({ clientId, message })`: Redis-backed message signer
+- `hmacMessageAuth.verifyMessage({ clientId, message, signature })`: Redis-backed message verifier
+
+Message helpers intentionally do not enforce timestamp skew checks or anti-replay.
 
 ### Credential helpers
 

@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.4.0] - 2026-04-08
+
+- `feat(init): add initializeHmacHttpAuth for HTTP route and signed fetch setup`
+- `feat(init): remove initializeHmacAuth alias and keep initializeHmacHttpAuth as the only init entrypoint`
+- `feat(http): rename verify and middleware helpers to explicit HTTP names (verifyHttpRequest, verifyHttpSignature, createHttpMiddleware)`
+- `feat(http): rename fetch signing helpers to explicit HTTP names (buildHttpSignedHeaders, signedHttpFetch, createHttpSignedFetchClient)`
+- `feat(message): add dedicated initializeHmacMessageAuth with signMessage/verifyMessage for async message flows`
+- `docs(init): update Express and NestJS guides to use initializeHmacHttpAuth`
+
 ## [0.3.0] - 2026-04-08
 
 - `feat(middleware): add createMiddleware as a generic alias of createExpressMiddleware`

@@ -1,31 +1,25 @@
 import { randomBytes } from "node:crypto";
+import { HmacAuthError } from "../errors.js";
+import { hashClientSecret } from "../hmac.js";
 import {
-  createHttpSignedFetchClient,
-  type CreateHttpSignedFetchClientOptions,
-  type SignedHttpFetchClientCallOptions,
-} from "./client/signed-fetch.js";
-import { HmacAuthError } from "./errors.js";
-import { hashClientSecret } from "./hmac.js";
-import { createExpressHttpHmacMiddleware } from "./server/express.js";
-import { verifyHttpSignature as verifyHttpSignatureCore } from "./server/verify.js";
-import {
-  RedisCredentialStore,
   assertRedisClient,
+  RedisCredentialStore,
   resolveNamespace,
   type RedisLikeClient,
   type StoredClientCredentialRecord,
-} from "./stores/redis.js";
+} from "../stores/redis.js";
 import type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
-  InitializeHmacHttpAuthOptions,
+  InitializeHmacMessageAuthOptions,
   RegenerateHmacSecretOptions,
-  VerifiedHttpRequest,
-  VerifyHttpWithRedisInput,
-} from "./types.js";
+  SignedMessage,
+  SignMessageWithRedisInput,
+  VerifyMessageWithRedisInput,
+} from "../types.js";
+import { signMessage as signMessageCore, verifyMessage as verifyMessageCore } from "./signature.js";
 
-const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_SECRET_LENGTH_BYTES = 32;
 
 function assertClientId(clientId: string): void {
@@ -77,26 +71,12 @@ function generateSecret(secretLengthBytes: number): string {
   return randomBytes(secretLengthBytes).toString("hex");
 }
 
-export interface InitializedHmacHttpAuth {
+export interface InitializedHmacMessageAuth {
   readonly redis: RedisLikeClient;
   readonly namespace: string;
-  readonly maxSkewMs: number;
   readonly secretToken?: string;
-  verifyHttpRequest: (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
-  verifyHttpSignature: (input: VerifyHttpWithRedisInput) => Promise<VerifiedHttpRequest>;
-  createHttpMiddleware: (options?: {
-    attachAuthTo?: string;
-    maxSkewMs?: number;
-    onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
-  }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
-  createExpressHttpMiddleware: (options?: {
-    attachAuthTo?: string;
-    maxSkewMs?: number;
-    onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
-  }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
-  createHttpSignedFetchClient: (
-    options: CreateHttpSignedFetchClientOptions,
-  ) => (url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>;
+  signMessage: (input: SignMessageWithRedisInput) => Promise<SignedMessage>;
+  verifyMessage: (input: VerifyMessageWithRedisInput) => Promise<SignedMessage>;
   clients: {
     create: (options: CreateHmacClientOptions) => Promise<HmacClientCredentialWithSecret>;
     listClientIds: () => Promise<string[]>;
@@ -109,7 +89,7 @@ export interface InitializedHmacHttpAuth {
   };
 }
 
-export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): InitializedHmacHttpAuth {
+export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOptions): InitializedHmacMessageAuth {
   if (!options?.redis) {
     throw new Error("Redis connection is mandatory");
   }
@@ -117,47 +97,69 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
   assertRedisClient(options.redis);
 
   const namespace = resolveNamespace(options.namespace);
-  const maxSkewMs = options.maxSkewMs ?? DEFAULT_MAX_SKEW_MS;
   const defaultSecretLengthBytes = options.defaultSecretLengthBytes ?? DEFAULT_SECRET_LENGTH_BYTES;
   const secretToken = options.secretToken;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
-  const verifyHttpSignature = async (input: VerifyHttpWithRedisInput): Promise<VerifiedHttpRequest> =>
-    verifyHttpSignatureCore({
-      ...input,
-      redis: options.redis,
-      namespace,
-      maxSkewMs: input.maxSkewMs ?? maxSkewMs,
-    });
-
-  const httpMiddlewareFactory = (middlewareOptions?: {
-    attachAuthTo?: string;
-    maxSkewMs?: number;
-    onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
-  }) =>
-    createExpressHttpHmacMiddleware({
-      redis: options.redis,
-      namespace,
-      maxSkewMs: middlewareOptions?.maxSkewMs ?? maxSkewMs,
-      attachAuthTo: middlewareOptions?.attachAuthTo,
-      onError: middlewareOptions?.onError,
-    });
-  const verifyHttpRequest = httpMiddlewareFactory();
 
   return {
     redis: options.redis,
     namespace,
-    maxSkewMs,
     secretToken,
-    verifyHttpRequest,
-    verifyHttpSignature,
-    createHttpMiddleware: httpMiddlewareFactory,
-    createExpressHttpMiddleware: httpMiddlewareFactory,
-    createHttpSignedFetchClient: (clientOptions) =>
-      createHttpSignedFetchClient({
-        ...clientOptions,
-        hashToken: clientOptions.hashToken ?? secretToken,
-      }),
+    signMessage: async (input) => {
+      assertClientId(input.clientId);
+      const record = await credentialStore.getClientRecord(input.clientId);
+      if (!record) {
+        throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot sign message: client not found", 404);
+      }
+
+      const now = Date.now();
+      if (record.expiresAt != null && now > record.expiresAt) {
+        throw new HmacAuthError("CLIENT_EXPIRED", "Client secret has expired");
+      }
+
+      return signMessageCore({
+        clientId: input.clientId,
+        message: input.message,
+        secret: record.secretHash,
+        secretIsHashed: true,
+      });
+    },
+    verifyMessage: async (input) => {
+      assertClientId(input.clientId);
+      if (!input.signature || !input.signature.trim()) {
+        throw new HmacAuthError("MISSING_SIGNATURE", "Missing message signature");
+      }
+
+      const record = await credentialStore.getClientRecord(input.clientId);
+      if (!record) {
+        throw new HmacAuthError("UNKNOWN_CLIENT", "Unknown client id");
+      }
+
+      const now = Date.now();
+      if (record.expiresAt != null && now > record.expiresAt) {
+        throw new HmacAuthError("CLIENT_EXPIRED", "Client secret has expired");
+      }
+
+      const isValid = verifyMessageCore({
+        clientId: input.clientId,
+        message: input.message,
+        signature: input.signature,
+        secret: record.secretHash,
+        secretIsHashed: true,
+      });
+
+      if (!isValid) {
+        throw new HmacAuthError("BAD_SIGNATURE", "Invalid message signature");
+      }
+
+      return signMessageCore({
+        clientId: input.clientId,
+        message: input.message,
+        secret: record.secretHash,
+        secretIsHashed: true,
+      });
+    },
     clients: {
       create: async (createOptions) => {
         assertClientId(createOptions.clientId);

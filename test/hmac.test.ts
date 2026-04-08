@@ -1,11 +1,14 @@
 import { describe, expect, it, vi } from "vitest";
 import {
-  buildSignedHeaders,
-  createSignedFetchClient,
+  buildHttpSignedHeaders,
+  createHttpSignedFetchClient,
   hashClientSecret,
-  initializeHmacAuth,
-  signedFetch,
-  verifyHmacRequest,
+  initializeHmacHttpAuth,
+  initializeHmacMessageAuth,
+  signMessage,
+  signedHttpFetch,
+  verifyHttpSignature,
+  verifyMessage,
 } from "../src/index.js";
 
 function headersToRecord(headers: Headers): Record<string, string> {
@@ -89,9 +92,9 @@ class FakeRedis {
 }
 
 describe("HMAC auth", () => {
-  it("supports createMiddleware and keeps createExpressMiddleware as alias", async () => {
+  it("supports verifyHttpRequest as middleware and keeps middleware aliases", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_middleware", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_middleware", maxSkewMs: 5000 });
     await auth.clients.setSecret("app_a", "secret_a");
 
     const makeRes = () => {
@@ -112,7 +115,7 @@ describe("HMAC auth", () => {
     const body = JSON.stringify({ ok: true });
     const ts1 = Date.now();
     const headers1 = headersToRecord(
-      buildSignedHeaders({
+      buildHttpSignedHeaders({
         method: "POST",
         url: "/secure/post",
         body,
@@ -133,13 +136,13 @@ describe("HMAC auth", () => {
     const res1 = makeRes();
     const next1 = vi.fn();
 
-    await auth.createMiddleware()(req1, res1 as any, next1);
+    await auth.verifyHttpRequest(req1, res1 as any, next1);
     expect(next1).toHaveBeenCalledTimes(1);
     expect(req1.hmacAuth?.clientId).toBe("app_a");
 
     const ts2 = ts1 + 1;
     const headers2 = headersToRecord(
-      buildSignedHeaders({
+      buildHttpSignedHeaders({
         method: "POST",
         url: "/secure/post",
         body,
@@ -160,14 +163,41 @@ describe("HMAC auth", () => {
     const res2 = makeRes();
     const next2 = vi.fn();
 
-    await auth.createExpressMiddleware()(req2, res2 as any, next2);
+    await auth.createHttpMiddleware()(req2, res2 as any, next2);
     expect(next2).toHaveBeenCalledTimes(1);
     expect(req2.hmacAuth?.clientId).toBe("app_a");
+
+    const ts3 = ts2 + 1;
+    const headers3 = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "POST",
+        url: "/secure/post",
+        body,
+        clientId: "app_a",
+        secret: "secret_a",
+        timestamp: ts3,
+        nonce: "nonce_mw_3",
+      }),
+    );
+
+    const req3: any = {
+      method: "POST",
+      originalUrl: "/secure/post",
+      url: "/secure/post",
+      headers: headers3,
+      rawBody: body,
+    };
+    const res3 = makeRes();
+    const next3 = vi.fn();
+
+    await auth.createExpressHttpMiddleware()(req3, res3 as any, next3);
+    expect(next3).toHaveBeenCalledTimes(1);
+    expect(req3.hmacAuth?.clientId).toBe("app_a");
   });
 
   it("verifies a valid signed request with redis-backed secrets", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({
+    const auth = initializeHmacHttpAuth({
       redis,
       namespace: "tenant_a",
       maxSkewMs: 5000,
@@ -177,7 +207,7 @@ describe("HMAC auth", () => {
     const timestamp = Date.now();
     const body = JSON.stringify({ hello: "world" });
 
-    const headers = buildSignedHeaders({
+    const headers = buildHttpSignedHeaders({
       method: "POST",
       url: "/v1/messages?x=1",
       body,
@@ -187,7 +217,7 @@ describe("HMAC auth", () => {
       nonce: "nonce_1",
     });
 
-    const verified = await auth.verifyHmacRequest({
+    const verified = await auth.verifyHttpSignature({
       method: "POST",
       path: "/v1/messages?x=1",
       headers: headersToRecord(headers),
@@ -202,12 +232,12 @@ describe("HMAC auth", () => {
 
   it("rejects replayed nonce", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_a", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_a", maxSkewMs: 5000 });
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
     const body = "";
-    const headers = buildSignedHeaders({
+    const headers = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body,
@@ -218,7 +248,7 @@ describe("HMAC auth", () => {
     });
     const headerRecord = headersToRecord(headers);
 
-    await auth.verifyHmacRequest({
+    await auth.verifyHttpSignature({
       method: "GET",
       path: "/health",
       headers: headerRecord,
@@ -227,7 +257,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headerRecord,
@@ -239,11 +269,11 @@ describe("HMAC auth", () => {
 
   it("returns 401 when clientId is missing", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_b", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_b", maxSkewMs: 5000 });
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
-    const headers = buildSignedHeaders({
+    const headers = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -255,7 +285,7 @@ describe("HMAC auth", () => {
     headers.delete("x-client-id");
 
     await expect(
-      verifyHmacRequest({
+      verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(headers),
@@ -270,12 +300,12 @@ describe("HMAC auth", () => {
 
   it("returns 401 for unknown client or wrong secret", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_c", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_c", maxSkewMs: 5000 });
     await auth.clients.setSecret("known_client", "server_secret");
 
     const timestamp = Date.now();
 
-    const unknownClientHeaders = buildSignedHeaders({
+    const unknownClientHeaders = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -286,7 +316,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(unknownClientHeaders),
@@ -295,7 +325,7 @@ describe("HMAC auth", () => {
       }),
     ).rejects.toMatchObject({ code: "UNKNOWN_CLIENT", status: 401 });
 
-    const wrongSecretHeaders = buildSignedHeaders({
+    const wrongSecretHeaders = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -306,7 +336,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(wrongSecretHeaders),
@@ -318,11 +348,11 @@ describe("HMAC auth", () => {
 
   it("returns 401 when client secret is expired", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_expired", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_expired", maxSkewMs: 5000 });
     await auth.clients.setSecret("exp_client", "secret_a", Date.now() - 1000);
 
     const timestamp = Date.now();
-    const headers = buildSignedHeaders({
+    const headers = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -333,7 +363,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(headers),
@@ -345,7 +375,7 @@ describe("HMAC auth", () => {
 
   it("supports client helpers create/list/delete/regenerate", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_admin", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_admin", maxSkewMs: 5000 });
 
     const created = await auth.clients.create({
       clientId: "client_admin",
@@ -371,7 +401,7 @@ describe("HMAC auth", () => {
 
   it("supports create with provided plainSecret and deterministic hash", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_plain_secret", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_plain_secret", maxSkewMs: 5000 });
 
     const first = await auth.clients.create({
       clientId: "client_a",
@@ -392,7 +422,7 @@ describe("HMAC auth", () => {
 
   it("rejects create when plainSecret is empty", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({ redis, namespace: "tenant_empty_secret", maxSkewMs: 5000 });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_empty_secret", maxSkewMs: 5000 });
 
     await expect(
       auth.clients.create({
@@ -404,7 +434,7 @@ describe("HMAC auth", () => {
 
   it("supports secretToken for deterministic tokenized secret hashes", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({
+    const auth = initializeHmacHttpAuth({
       redis,
       namespace: "tenant_tokenized",
       maxSkewMs: 5000,
@@ -427,7 +457,7 @@ describe("HMAC auth", () => {
 
   it("verifies tokenized signatures only when using the same secretToken", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacAuth({
+    const auth = initializeHmacHttpAuth({
       redis,
       namespace: "tenant_token_verify",
       maxSkewMs: 5000,
@@ -436,7 +466,7 @@ describe("HMAC auth", () => {
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
-    const headersWithToken = buildSignedHeaders({
+    const headersWithToken = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -448,7 +478,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(headersWithToken),
@@ -457,7 +487,7 @@ describe("HMAC auth", () => {
       }),
     ).resolves.toMatchObject({ clientId: "app_a" });
 
-    const headersWithoutToken = buildSignedHeaders({
+    const headersWithoutToken = buildHttpSignedHeaders({
       method: "GET",
       url: "/health",
       body: "",
@@ -468,7 +498,7 @@ describe("HMAC auth", () => {
     });
 
     await expect(
-      auth.verifyHmacRequest({
+      auth.verifyHttpSignature({
         method: "GET",
         path: "/health",
         headers: headersToRecord(headersWithoutToken),
@@ -478,12 +508,97 @@ describe("HMAC auth", () => {
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
   });
 
+  it("signs and verifies messages with low-level helpers", () => {
+    const signed = signMessage({
+      clientId: "app_msg",
+      secret: "msg_secret",
+      message: {
+        z: 3,
+        a: 1,
+        nested: { y: true, x: "ok" },
+      },
+    });
+
+    expect(signed.clientId).toBe("app_msg");
+    expect(signed.signature).toBeTruthy();
+    expect(signed.messageHash).toBeTruthy();
+
+    const valid = verifyMessage({
+      clientId: "app_msg",
+      secret: "msg_secret",
+      signature: signed.signature,
+      message: {
+        a: 1,
+        nested: { x: "ok", y: true },
+        z: 3,
+      },
+    });
+    expect(valid).toBe(true);
+
+    const invalid = verifyMessage({
+      clientId: "app_msg",
+      secret: "msg_secret",
+      signature: signed.signature,
+      message: {
+        a: 1,
+        nested: { x: "ok", y: false },
+        z: 3,
+      },
+    });
+    expect(invalid).toBe(false);
+  });
+
+  it("supports Redis-backed message sign/verify without anti-replay or skew checks", async () => {
+    const redis = new FakeRedis();
+    const messageAuth = initializeHmacMessageAuth({
+      redis,
+      namespace: "tenant_msg",
+    });
+    await messageAuth.clients.setSecret("app_msg", "msg_secret");
+
+    const signed = await messageAuth.signMessage({
+      clientId: "app_msg",
+      message: { event: "order.created", id: 42 },
+    });
+
+    const verified1 = await messageAuth.verifyMessage({
+      clientId: "app_msg",
+      message: { id: 42, event: "order.created" },
+      signature: signed.signature,
+    });
+    expect(verified1.clientId).toBe("app_msg");
+    expect(verified1.messageHash).toBe(signed.messageHash);
+
+    // Same signature can be verified multiple times by design for async message flows.
+    const verified2 = await messageAuth.verifyMessage({
+      clientId: "app_msg",
+      message: { id: 42, event: "order.created" },
+      signature: signed.signature,
+    });
+    expect(verified2.signature).toBe(signed.signature);
+
+    await expect(
+      messageAuth.verifyMessage({
+        clientId: "unknown_msg",
+        message: { id: 42, event: "order.created" },
+        signature: signed.signature,
+      }),
+    ).rejects.toMatchObject({ code: "UNKNOWN_CLIENT", status: 401 });
+
+    await expect(
+      messageAuth.signMessage({
+        clientId: "unknown_msg",
+        message: { id: 42, event: "order.created" },
+      }),
+    ).rejects.toMatchObject({ code: "CLIENT_NOT_FOUND", status: 404 });
+  });
+
   it("signs fetch requests with helper", async () => {
     const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => {
       return new Response(null, { status: 204 });
     });
 
-    await signedFetch("https://api.example.com/v1/ping", {
+    await signedHttpFetch("https://api.example.com/v1/ping", {
       method: "POST",
       body: { ok: true },
       clientId: "app_a",
@@ -507,7 +622,7 @@ describe("HMAC auth", () => {
       return new Response(null, { status: 204 });
     });
 
-    const apiFetch = createSignedFetchClient({
+    const apiFetch = createHttpSignedFetchClient({
       clientId: "local_client",
       secret: "local_secret",
       fetchImpl: fetchMock,
