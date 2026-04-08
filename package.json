@@ -1,7 +1,7 @@
 {
   "name": "@naskot/node-hmac-auth",
   "version": "0.3.0",
-  "description": "Simple and reusable HMAC auth for Node.js APIs (Express-friendly, framework-agnostic core).",
+  "description": "Simple and reusable HMAC auth for Node.js APIs and microservices (Express-friendly, framework-agnostic core).",
   "repository": {
     "type": "git",
     "url": "https://github.com/padcmoi/node-hmac-auth"

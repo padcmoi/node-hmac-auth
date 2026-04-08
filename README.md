@@ -1,6 +1,6 @@
 # node-hmac-auth
 
-Simple, reusable HMAC authentication for Node.js APIs.
+Simple, reusable HMAC authentication for Node.js APIs and microservices.
 
 Redis is mandatory.
 
