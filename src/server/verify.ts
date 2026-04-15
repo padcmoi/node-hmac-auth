@@ -1,10 +1,22 @@
 import { HmacAuthError } from "../errors.js";
 import { safeEqualHex, signRequest } from "../hmac.js";
 import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../stores/redis.js";
-import type { VerifiedHttpRequest, VerifyHttpSignatureInput } from "../types.js";
+import type { BadHttpSignatureEvent, VerifiedHttpRequest, VerifyHttpSignatureInput } from "../types.js";
 import { getHeader, normalizePath, toBodyString } from "../utils.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
+
+async function notifyBadSignature(event: BadHttpSignatureEvent, input: VerifyHttpSignatureInput): Promise<void> {
+  if (!input.onBadSignature) {
+    return;
+  }
+
+  try {
+    await input.onBadSignature(event);
+  } catch {
+    // Never break auth flow if callback fails.
+  }
+}
 
 export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Promise<VerifiedHttpRequest> {
   assertRedisClient(input.redis);
@@ -53,9 +65,10 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
     throw new HmacAuthError("CLIENT_EXPIRED", "Client secret has expired");
   }
 
+  const normalizedPath = normalizePath(input.path);
   const expectedSignature = signRequest({
     method: input.method,
-    path: normalizePath(input.path),
+    path: normalizedPath,
     timestamp,
     nonce,
     body: toBodyString(input.rawBody),
@@ -63,6 +76,22 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
   });
 
   if (!safeEqualHex(expectedSignature, signature)) {
+    await notifyBadSignature(
+      {
+        clientId,
+        method: input.method,
+        path: normalizedPath,
+        timestamp,
+        nonce,
+        receivedSignature: signature,
+        expectedSignature,
+        headers: input.headers,
+        rawBody: input.rawBody,
+        metadata: input.metadata,
+      },
+      input,
+    );
+
     throw new HmacAuthError("BAD_SIGNATURE", "Invalid HMAC signature");
   }
 

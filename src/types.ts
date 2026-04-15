@@ -1,5 +1,20 @@
 import type { RedisLikeClient } from "./stores/redis.js";
 
+export interface BadHttpSignatureEvent {
+  clientId: string;
+  method: string;
+  path: string;
+  timestamp: number;
+  nonce: string;
+  receivedSignature: string;
+  expectedSignature: string;
+  headers: Record<string, string | string[] | undefined>;
+  rawBody?: unknown;
+  metadata?: unknown;
+}
+
+export type OnBadHttpSignature = (event: BadHttpSignatureEvent) => void | Promise<void>;
+
 export interface SignInput {
   method: string;
   path: string;
@@ -18,6 +33,8 @@ export interface VerifyHttpSignatureInput {
   namespace?: string;
   maxSkewMs?: number;
   now?: number;
+  onBadSignature?: OnBadHttpSignature;
+  metadata?: unknown;
 }
 
 export interface VerifiedRequest {
@@ -35,6 +52,7 @@ export interface InitializeHmacHttpAuthOptions {
   maxSkewMs?: number;
   defaultSecretLengthBytes?: number;
   secretToken?: string;
+  onBadSignature?: OnBadHttpSignature;
 }
 
 export interface InitializeHmacMessageAuthOptions {
@@ -51,6 +69,8 @@ export interface VerifyHttpWithRedisInput {
   rawBody?: unknown;
   now?: number;
   maxSkewMs?: number;
+  onBadSignature?: OnBadHttpSignature;
+  metadata?: unknown;
 }
 
 export interface HmacClientCredential {

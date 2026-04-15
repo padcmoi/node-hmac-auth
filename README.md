@@ -61,6 +61,10 @@ SHA256(BODY)
   - `options.maxSkewMs?`
   - `options.defaultSecretLengthBytes?`
   - `options.secretToken?`
+  - `options.onBadSignature?(event)`
+
+`event` contains `clientId`, `method`, `path`, `timestamp`, `nonce`, `receivedSignature`, `expectedSignature`, `headers`, `rawBody`, and optional `metadata`.
+
 - `initializeHmacMessageAuth(options)` (recommended for message signing + verification)
   - `options.redis` (required)
   - `options.namespace?`

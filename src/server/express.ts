@@ -1,5 +1,6 @@
 import { HmacAuthError } from "../errors.js";
 import type { RedisLikeClient } from "../stores/redis.js";
+import type { OnBadHttpSignature } from "../types.js";
 import { verifyHttpSignature } from "./verify.js";
 
 export interface ExpressHmacMiddlewareOptions {
@@ -8,6 +9,7 @@ export interface ExpressHmacMiddlewareOptions {
   maxSkewMs?: number;
   attachAuthTo?: string;
   onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+  onBadSignature?: OnBadHttpSignature;
 }
 
 export type HttpHmacMiddlewareOptions = ExpressHmacMiddlewareOptions;
@@ -30,6 +32,15 @@ function fallbackRawBody(req: any): unknown {
     return req.body;
   }
   return JSON.stringify(req.body);
+}
+
+function fallbackMetadata(req: any): Record<string, unknown> {
+  return {
+    ip: req?.ip,
+    ips: req?.ips,
+    remoteAddress: req?.socket?.remoteAddress,
+    forwardedFor: req?.headers?.["x-forwarded-for"],
+  };
 }
 
 function toHmacError(error: unknown): HmacAuthError {
@@ -56,6 +67,8 @@ export function createExpressHttpHmacMiddleware(options: ExpressHmacMiddlewareOp
         redis: options.redis,
         namespace: options.namespace,
         maxSkewMs: options.maxSkewMs,
+        onBadSignature: options.onBadSignature,
+        metadata: fallbackMetadata(req),
       });
 
       req[attachAuthTo] = verified;

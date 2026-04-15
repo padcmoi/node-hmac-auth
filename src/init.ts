@@ -20,6 +20,7 @@ import type {
   HmacClientCredential,
   HmacClientCredentialWithSecret,
   InitializeHmacHttpAuthOptions,
+  OnBadHttpSignature,
   RegenerateHmacSecretOptions,
   VerifiedHttpRequest,
   VerifyHttpWithRedisInput,
@@ -88,11 +89,13 @@ export interface InitializedHmacHttpAuth {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+    onBadSignature?: OnBadHttpSignature;
   }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
   createExpressHttpMiddleware: (options?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+    onBadSignature?: OnBadHttpSignature;
   }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
   createHttpSignedFetchClient: (
     options: CreateHttpSignedFetchClientOptions,
@@ -128,12 +131,15 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       redis: options.redis,
       namespace,
       maxSkewMs: input.maxSkewMs ?? maxSkewMs,
+      onBadSignature: input.onBadSignature ?? options.onBadSignature,
+      metadata: input.metadata,
     });
 
   const httpMiddlewareFactory = (middlewareOptions?: {
     attachAuthTo?: string;
     maxSkewMs?: number;
     onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
+    onBadSignature?: OnBadHttpSignature;
   }) =>
     createExpressHttpHmacMiddleware({
       redis: options.redis,
@@ -141,6 +147,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       maxSkewMs: middlewareOptions?.maxSkewMs ?? maxSkewMs,
       attachAuthTo: middlewareOptions?.attachAuthTo,
       onError: middlewareOptions?.onError,
+      onBadSignature: middlewareOptions?.onBadSignature ?? options.onBadSignature,
     });
   const verifyHttpRequest = httpMiddlewareFactory();
 
