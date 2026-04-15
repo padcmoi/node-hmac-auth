@@ -26,11 +26,13 @@ export {
 } from "./stores/redis.js";
 
 export type {
+  BadHttpSignatureEvent,
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
   InitializeHmacHttpAuthOptions,
   InitializeHmacMessageAuthOptions,
+  OnBadHttpSignature,
   RegenerateHmacSecretOptions,
   SignedMessage,
   SignInput,

@@ -334,6 +334,89 @@ describe("HMAC auth", () => {
       timestamp,
       nonce: "nonce_wrong_secret",
     });
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/health",
+        headers: headersToRecord(wrongSecretHeaders),
+        rawBody: "",
+        now: timestamp,
+      }),
+    ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
+  });
+
+  it("triggers onBadSignature callback before BAD_SIGNATURE", async () => {
+    const redis = new FakeRedis();
+    const onBadSignature = vi.fn();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_callback",
+      maxSkewMs: 5000,
+      onBadSignature,
+    });
+    await auth.clients.setSecret("known_client", "server_secret");
+
+    const timestamp = Date.now();
+    const wrongSecretHeaders = buildHttpSignedHeaders({
+      method: "GET",
+      url: "/health",
+      body: "",
+      clientId: "known_client",
+      secret: "wrong_secret",
+      timestamp,
+      nonce: "nonce_callback",
+    });
+    const wrongSecretHeaderRecord = headersToRecord(wrongSecretHeaders);
+
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/health",
+        headers: wrongSecretHeaderRecord,
+        rawBody: "",
+        now: timestamp,
+        metadata: { source: "unit-test" },
+      }),
+    ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
+
+    expect(onBadSignature).toHaveBeenCalledTimes(1);
+
+    const event = onBadSignature.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(event.clientId).toBe("known_client");
+    expect(event.method).toBe("GET");
+    expect(event.path).toBe("/health");
+    expect(event.timestamp).toBe(timestamp);
+    expect(event.nonce).toBe("nonce_callback");
+    expect(event.receivedSignature).toBe(wrongSecretHeaderRecord["x-signature"]);
+    expect(typeof event.expectedSignature).toBe("string");
+    expect((event.expectedSignature as string).length).toBe(64);
+    expect(event.metadata).toEqual({ source: "unit-test" });
+  });
+
+  it("keeps BAD_SIGNATURE when onBadSignature callback throws", async () => {
+    const redis = new FakeRedis();
+    const onBadSignature = vi.fn(async () => {
+      throw new Error("callback failure");
+    });
+
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_callback_error",
+      maxSkewMs: 5000,
+      onBadSignature,
+    });
+    await auth.clients.setSecret("known_client", "server_secret");
+
+    const timestamp = Date.now();
+    const wrongSecretHeaders = buildHttpSignedHeaders({
+      method: "GET",
+      url: "/health",
+      body: "",
+      clientId: "known_client",
+      secret: "wrong_secret",
+      timestamp,
+      nonce: "nonce_callback_error",
+    });
 
     await expect(
       auth.verifyHttpSignature({
@@ -344,6 +427,8 @@ describe("HMAC auth", () => {
         now: timestamp,
       }),
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
+
+    expect(onBadSignature).toHaveBeenCalledTimes(1);
   });
 
   it("returns 401 when client secret is expired", async () => {
