@@ -26,6 +26,29 @@ const hmacAuth = initializeHmacHttpAuth({
   maxSkewMs: 5 * 60 * 1000,
   defaultSecretLengthBytes: 32,
   secretToken: process.env.HMAC_SECRET_TOKEN, // strongly recommended
+  onBadSignature: async (event) => {
+    const meta = (event.metadata ?? {}) as {
+      ip?: string;
+      remoteAddress?: string;
+      forwardedFor?: string | string[];
+    };
+
+    const forwarded = Array.isArray(meta.forwardedFor) ? meta.forwardedFor[0] : meta.forwardedFor;
+    const ipFromForwarded = forwarded?.split(",")[0]?.trim();
+    const ip = ipFromForwarded || meta.ip || meta.remoteAddress || "unknown";
+
+    console.warn("BAD_SIGNATURE", {
+      ip,
+      clientId: event.clientId,
+      path: event.path,
+      nonce: event.nonce,
+      timestamp: event.timestamp,
+    });
+
+    // Example anti-bruteforce / ban pipeline:
+    // await redis.incr(`ban:hmac:${ip}`);
+    // await redis.expire(`ban:hmac:${ip}`, 60);
+  },
 });
 ```
 
@@ -51,6 +74,9 @@ import express from "express";
 import { captureRawBody } from "@naskot/node-hmac-auth";
 
 const app = express();
+
+// If behind a reverse proxy/load balancer, keep client IP from X-Forwarded-For.
+app.set("trust proxy", true);
 
 app.use(
   express.json({

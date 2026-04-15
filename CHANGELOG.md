@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [Unreleased]
+
+- `feat(http): add optional onBadSignature callback in initializeHmacHttpAuth for BAD_SIGNATURE attempts`
+- `feat(http): pass middleware request metadata (ip/forwardedFor/remoteAddress) to onBadSignature callback`
+- `docs(http): document onBadSignature callback in root, Express, and NestJS guides`
+
 ## [0.4.1] - 2026-04-08
 
 - `fix(ci): harden npm publish workflow with strict semver validation and package/tag version checks`
