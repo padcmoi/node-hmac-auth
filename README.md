@@ -62,6 +62,7 @@ SHA256(BODY)
   - `options.defaultSecretLengthBytes?`
   - `options.secretToken?`
   - `options.onBadSignature?(event)`
+  - `options.internalManagementRoute?` (ex: `/api/internal/hmac`)
 
 `event` contains `clientId`, `method`, `path`, `timestamp`, `nonce`, `receivedSignature`, `expectedSignature`, `headers`, `rawBody`, and optional `metadata`.
 
@@ -89,6 +90,27 @@ app.use("/secure", hmacAuth.verifyHttpRequest);
 - `buildHttpSignedHeaders(input)`
 - `signedHttpFetch(url, options)`
 - `createHttpSignedFetchClient(options)`
+
+### Internal HTTP key-management helpers
+
+Enabled only when `internalManagementRoute` is configured.
+
+- `handleInternalManagementRequest(input)`
+- `createInternalManagementMiddleware(options?)`
+- `createExpressInternalManagementMiddleware(options?)`
+- `propagateClientToApis(options)`
+
+Route behavior for `internalManagementRoute`:
+
+- `GET`: healthcheck
+- `POST`: create/propagate client (`201` accepted, `403` refused)
+- `PUT`: update secret (`201` accepted, `403` refused)
+- `DELETE`: delete client (`201` accepted, `403` refused)
+
+Security rule:
+
+- If at least one client exists, route requires valid HMAC auth.
+- If no client exists yet, bootstrap creation is allowed (first key).
 
 ### Message helpers
 
