@@ -53,6 +53,7 @@ export interface InitializeHmacHttpAuthOptions {
   defaultSecretLengthBytes?: number;
   secretToken?: string;
   onBadSignature?: OnBadHttpSignature;
+  internalManagementRoute?: string;
 }
 
 export interface InitializeHmacMessageAuthOptions {
@@ -124,4 +125,45 @@ export interface SignMessageWithRedisInput {
 
 export interface VerifyMessageWithRedisInput extends SignMessageWithRedisInput {
   signature: string;
+}
+
+export interface HmacInternalManagementRequestInput {
+  method: string;
+  path: string;
+  headers: Record<string, string | string[] | undefined>;
+  rawBody?: unknown;
+  now?: number;
+  maxSkewMs?: number;
+  onBadSignature?: OnBadHttpSignature;
+  metadata?: unknown;
+}
+
+export interface HmacInternalManagementRequestResult {
+  handled: boolean;
+  status: number;
+  body: Record<string, unknown>;
+  verifiedAuth?: VerifiedHttpRequest | null;
+}
+
+export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete";
+
+export interface PropagateHmacClientOptions {
+  operation: HmacInternalPropagationOperation;
+  targets: string[];
+  apiFetch?: (url: string, options: RequestInit) => Promise<Response>;
+  headers?: HeadersInit;
+  clientId?: string;
+  secret?: string;
+  secretHash?: string;
+  expiresAt?: number | Date | null;
+}
+
+export interface PropagateHmacClientResult {
+  target: string;
+  url: string;
+  operation: HmacInternalPropagationOperation;
+  status: number;
+  accepted: boolean;
+  body: unknown;
+  error?: string;
 }

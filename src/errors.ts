@@ -10,6 +10,7 @@ export type HmacAuthErrorCode =
   | "CLIENT_NOT_FOUND"
   | "BAD_SIGNATURE"
   | "REPLAYED_NONCE"
+  | "INTERNAL_ROUTE_DISABLED"
   | "INTERNAL_ERROR";
 
 export class HmacAuthError extends Error {
