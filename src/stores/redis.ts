@@ -7,7 +7,7 @@ export interface RedisLikeClient {
   hdel?: (key: string, field: string) => Promise<unknown> | unknown;
   hKeys?: (key: string) => Promise<string[]> | string[];
   hkeys?: (key: string) => Promise<string[]> | string[];
-  set?: (key: string, value: string, ...args: unknown[]) => Promise<unknown> | unknown;
+  set?: (key: string, value: string, ...args: any[]) => Promise<unknown> | unknown;
 }
 
 export interface RedisNamespaceKeys {

@@ -6,6 +6,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 
 ## [Unreleased]
 
+- `fix(types): relax RedisLikeClient set args typing for node-redis compatibility`
 - `feat(http): add optional onBadSignature callback in initializeHmacHttpAuth for BAD_SIGNATURE attempts`
 - `feat(http): pass middleware request metadata (ip/forwardedFor/remoteAddress) to onBadSignature callback`
 - `docs(http): document onBadSignature callback in root, Express, and NestJS guides`
