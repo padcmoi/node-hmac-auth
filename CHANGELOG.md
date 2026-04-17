@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
-## [Unreleased]
+## [Unreleased] - yyyy-mm-dd
 
 - `feat(runtime): add createHmacRuntime factory with createSignedFetchFromClientId and signedFetchWithClientId helpers`
 - `feat(runtime): add hmacHttpMiddleware(...clientIds) helper in createHmacRuntime for scoped clientId allowlist on protected routes`
