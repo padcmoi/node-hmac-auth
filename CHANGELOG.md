@@ -6,6 +6,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 
 ## [Unreleased]
 
+- `fix(types): align propagateClientToApis apiFetch signature with createHttpSignedFetchClient signer`
 - `fix(clients): add missing plainSecret option in regenerateSecret (http + message) while preserving random generation fallback`
 - `fix(types): relax RedisLikeClient set args typing for node-redis compatibility`
 - `feat(http): add internalManagementRoute in initializeHmacHttpAuth with GET/POST/PUT/DELETE management flow`

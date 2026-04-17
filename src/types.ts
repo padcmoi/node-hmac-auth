@@ -1,3 +1,4 @@
+import type { SignedHttpFetchClientCallOptions } from "./client/signed-fetch.js";
 import type { RedisLikeClient } from "./stores/redis.js";
 
 export interface BadHttpSignatureEvent {
@@ -150,7 +151,7 @@ export type HmacInternalPropagationOperation = "health" | "create" | "update" | 
 export interface PropagateHmacClientOptions {
   operation: HmacInternalPropagationOperation;
   targets: string[];
-  apiFetch?: (url: string, options: RequestInit) => Promise<Response>;
+  apiFetch?: (url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>;
   headers?: HeadersInit;
   clientId?: string;
   secret?: string;
