@@ -148,10 +148,14 @@ export interface HmacInternalManagementRequestResult {
 
 export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete";
 
+export type PropagateApiFetch =
+  | ((url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>)
+  | ((url: string, options: RequestInit) => Promise<Response>);
+
 export interface PropagateHmacClientOptions {
   operation: HmacInternalPropagationOperation;
   targets: string[];
-  apiFetch?: (url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>;
+  apiFetch?: PropagateApiFetch;
   headers?: HeadersInit;
   clientId?: string;
   secret?: string;
