@@ -172,3 +172,28 @@ export interface PropagateHmacClientResult {
   body: unknown;
   error?: string;
 }
+
+export type PropagateServiceCreateOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+  plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+};
+
+export type PropagateServiceUpdateOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+  plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+};
+
+export type PropagateServiceDeleteOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+};
+
+export type PropagateServiceHealthOptions = {
+  useClientId: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+};
