@@ -182,3 +182,60 @@ await hmacMessageAuth.verifyMessage({
 ```
 
 Message verification intentionally does not enforce timestamp skew checks or anti-replay.
+
+## 9) Internal HMAC Key Management Route (optional)
+
+You can enable a dedicated internal route used to bootstrap and propagate credentials between APIs.
+
+```ts
+const hmacAuth = initializeHmacHttpAuth({
+  redis,
+  namespace: "my-api-prod",
+  secretToken: process.env.HMAC_SECRET_TOKEN,
+  internalManagementRoute: "/api/internal/hmac",
+});
+
+app.use(hmacAuth.createInternalManagementMiddleware());
+```
+
+Supported methods on `/api/internal/hmac`:
+
+- `GET`: healthcheck
+- `POST`: create/propagate a credential
+- `PUT`: update a credential secret
+- `DELETE`: delete a credential
+
+For `POST` / `PUT` / `DELETE`, target APIs return:
+
+- `201` when accepted
+- `403` when refused
+
+Security behavior:
+
+- If at least one client already exists in Redis, route requires valid HMAC auth.
+- If no client exists yet, first credential bootstrap is accepted without HMAC auth.
+
+### Propagate to one or many APIs
+
+Use a signed `apiFetch` (created from an existing key) when target APIs already require authentication.
+
+```ts
+const signer = hmacAuth.createHttpSignedFetchClient({
+  clientId: "internal_sync",
+  secret: "internal_sync_secret",
+});
+
+const results = await hmacAuth.propagateClientToApis({
+  operation: "create",
+  targets: [
+    "https://api-a.example.com",
+    "https://api-b.example.com",
+  ],
+  clientId: "client_mobile",
+  secret: "superSharedSecret",
+  apiFetch: signer,
+});
+
+// Each result includes status and accepted boolean (201/403)
+console.log(results);
+```

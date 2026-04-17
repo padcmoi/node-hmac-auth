@@ -778,4 +778,218 @@ describe("HMAC auth", () => {
     expect(headers.get("x-client-id")).toBe("local_client");
     expect(headers.get("x-signature")).toBeTruthy();
   });
+
+  it("supports internal management route bootstrap and authenticated updates", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_internal",
+      internalManagementRoute: "/api/internal/hmac",
+      maxSkewMs: 5000,
+    });
+
+    const route = "/api/internal/hmac";
+
+    const bootstrapCreate = await auth.handleInternalManagementRequest({
+      method: "POST",
+      path: route,
+      headers: {},
+      rawBody: JSON.stringify({
+        clientId: "bootstrap_client",
+        secret: "bootstrap_secret",
+      }),
+      now: Date.now(),
+    });
+
+    expect(bootstrapCreate.handled).toBe(true);
+    expect(bootstrapCreate.status).toBe(201);
+    expect((await auth.clients.get("bootstrap_client"))?.clientId).toBe("bootstrap_client");
+
+    const unauthorizedCreate = await auth.handleInternalManagementRequest({
+      method: "POST",
+      path: route,
+      headers: {},
+      rawBody: JSON.stringify({
+        clientId: "blocked_client",
+        secret: "blocked_secret",
+      }),
+      now: Date.now(),
+    });
+
+    expect(unauthorizedCreate.status).toBe(403);
+    expect((await auth.clients.get("blocked_client")) == null).toBe(true);
+
+    const authorizedBody = JSON.stringify({
+      clientId: "sync_client",
+      secret: "sync_secret",
+    });
+
+    const createHeaders = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "POST",
+        url: route,
+        body: authorizedBody,
+        clientId: "bootstrap_client",
+        secret: "bootstrap_secret",
+        timestamp: Date.now(),
+        nonce: "nonce_internal_create_1",
+      }),
+    );
+
+    const authorizedCreate = await auth.handleInternalManagementRequest({
+      method: "POST",
+      path: route,
+      headers: createHeaders,
+      rawBody: authorizedBody,
+      now: Date.now(),
+    });
+
+    expect(authorizedCreate.status).toBe(201);
+    expect((await auth.clients.get("sync_client"))?.clientId).toBe("sync_client");
+
+    const updateBody = JSON.stringify({
+      clientId: "sync_client",
+      secret: "sync_secret_rotated",
+    });
+
+    const updateHeaders = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "PUT",
+        url: route,
+        body: updateBody,
+        clientId: "bootstrap_client",
+        secret: "bootstrap_secret",
+        timestamp: Date.now(),
+        nonce: "nonce_internal_update_1",
+      }),
+    );
+
+    const updateResult = await auth.handleInternalManagementRequest({
+      method: "PUT",
+      path: route,
+      headers: updateHeaders,
+      rawBody: updateBody,
+      now: Date.now(),
+    });
+
+    expect(updateResult.status).toBe(201);
+
+    const updatedClient = await auth.clients.get("sync_client");
+    expect(updatedClient?.secretHash).toBe(hashClientSecret("sync_secret_rotated"));
+  });
+
+  it("creates internal management middleware and skips unknown routes", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_internal_mw",
+      internalManagementRoute: "/api/internal/hmac",
+      maxSkewMs: 5000,
+    });
+
+    const middleware = auth.createInternalManagementMiddleware();
+
+    const nextUnknown = vi.fn();
+    const reqUnknown: any = {
+      method: "GET",
+      originalUrl: "/other",
+      url: "/other",
+      headers: {},
+      rawBody: "",
+    };
+    const resUnknown: any = {
+      status: vi.fn().mockReturnThis(),
+      json: vi.fn().mockReturnThis(),
+    };
+
+    await middleware(reqUnknown, resUnknown, nextUnknown);
+    expect(nextUnknown).toHaveBeenCalledTimes(1);
+
+    const nextInternal = vi.fn();
+    const reqInternal: any = {
+      method: "GET",
+      originalUrl: "/api/internal/hmac",
+      url: "/api/internal/hmac",
+      headers: {},
+      rawBody: "",
+    };
+
+    const resInternal: any = {
+      statusCode: 0,
+      body: undefined as unknown,
+      status(code: number) {
+        this.statusCode = code;
+        return this;
+      },
+      json(payload: unknown) {
+        this.body = payload;
+        return this;
+      },
+    };
+
+    await middleware(reqInternal, resInternal, nextInternal);
+    expect(nextInternal).toHaveBeenCalledTimes(0);
+    expect(resInternal.statusCode).toBe(200);
+    expect((resInternal.body as Record<string, unknown>)?.ok).toBe(true);
+  });
+
+  it("propagates client operations to multiple APIs and returns acceptance per target", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_propagate",
+      internalManagementRoute: "/api/internal/hmac",
+      maxSkewMs: 5000,
+    });
+
+    const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
+      const asString = String(url);
+      if (asString.includes("api-1.example.com")) {
+        return new Response(JSON.stringify({ ok: true }), {
+          status: 201,
+          headers: { "content-type": "application/json" },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: "FORBIDDEN" }), {
+        status: 403,
+        headers: { "content-type": "application/json" },
+      });
+    });
+
+    const results = await auth.propagateClientToApis({
+      operation: "create",
+      targets: ["https://api-1.example.com", "https://api-2.example.com"],
+      clientId: "client_sync",
+      secret: "secret_sync",
+      apiFetch: fetchMock as any,
+    });
+
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(results).toHaveLength(2);
+    expect(results[0]?.accepted).toBe(true);
+    expect(results[0]?.status).toBe(201);
+    expect(results[1]?.accepted).toBe(false);
+    expect(results[1]?.status).toBe(403);
+    expect(results[0]?.url).toContain("/api/internal/hmac");
+    expect(results[1]?.url).toContain("/api/internal/hmac");
+  });
+
+  it("rejects propagation when internal management route is disabled", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_no_internal_route",
+      maxSkewMs: 5000,
+    });
+
+    await expect(
+      auth.propagateClientToApis({
+        operation: "create",
+        targets: ["https://api-1.example.com"],
+        clientId: "client_sync",
+        secret: "secret_sync",
+      }),
+    ).rejects.toMatchObject({ code: "INTERNAL_ROUTE_DISABLED" });
+  });
 });

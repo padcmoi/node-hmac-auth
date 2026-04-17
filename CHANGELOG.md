@@ -6,8 +6,16 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 
 ## [Unreleased]
 
+- `feat(runtime): add createHmacRuntime factory with createSignedFetchFromClientId and signedFetchWithClientId helpers`
+- `feat(runtime): add hmacHttpMiddleware(...clientIds) helper in createHmacRuntime for scoped clientId allowlist on protected routes`
+- `fix(types): expose HmacRuntime as inferred ReturnType<typeof createHmacRuntime> instead of explicit method signatures`
+- `fix(types): make propagateClientToApis apiFetch accept both createHttpSignedFetchClient signer and RequestInit-based wrappers`
 - `fix(clients): add missing plainSecret option in regenerateSecret (http + message) while preserving random generation fallback`
 - `fix(types): relax RedisLikeClient set args typing for node-redis compatibility`
+- `feat(http): add internalManagementRoute in initializeHmacHttpAuth with GET/POST/PUT/DELETE management flow`
+- `feat(http): add internal management middleware and low-level request handler with bootstrap-then-auth behavior`
+- `feat(http): add propagateClientToApis helper for one-to-many key distribution with 201/403 acceptance reporting`
+- `docs(http): document internal management route and propagation helpers in root, Express, and NestJS guides`
 - `feat(http): add optional onBadSignature callback in initializeHmacHttpAuth for BAD_SIGNATURE attempts`
 - `feat(http): pass middleware request metadata (ip/forwardedFor/remoteAddress) to onBadSignature callback`
 - `docs(http): document onBadSignature callback in root, Express, and NestJS guides`

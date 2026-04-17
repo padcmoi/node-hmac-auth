@@ -13,6 +13,7 @@ export {
 export { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "./init.js";
 export { initializeHmacMessageAuth, type InitializedHmacMessageAuth } from "./message/init.js";
 export { buildMessageSigningPayload, signMessage, verifyMessage } from "./message/signature.js";
+export { createHmacRuntime, type HmacRuntime } from "./runtime.js";
 
 export { captureRawBody, createExpressHttpHmacMiddleware, createHttpHmacMiddleware } from "./server/express.js";
 export { verifyHttpSignature } from "./server/verify.js";
@@ -30,9 +31,18 @@ export type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
+  HmacInternalManagementRequestInput,
+  HmacInternalManagementRequestResult,
+  HmacInternalPropagationOperation,
   InitializeHmacHttpAuthOptions,
   InitializeHmacMessageAuthOptions,
   OnBadHttpSignature,
+  PropagateHmacClientOptions,
+  PropagateHmacClientResult,
+  PropagateServiceCreateOptions,
+  PropagateServiceDeleteOptions,
+  PropagateServiceHealthOptions,
+  PropagateServiceUpdateOptions,
   RegenerateHmacSecretOptions,
   SignedMessage,
   SignInput,

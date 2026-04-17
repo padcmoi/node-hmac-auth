@@ -1,3 +1,4 @@
+import type { SignedHttpFetchClientCallOptions } from "./client/signed-fetch.js";
 import type { RedisLikeClient } from "./stores/redis.js";
 
 export interface BadHttpSignatureEvent {
@@ -53,6 +54,7 @@ export interface InitializeHmacHttpAuthOptions {
   defaultSecretLengthBytes?: number;
   secretToken?: string;
   onBadSignature?: OnBadHttpSignature;
+  internalManagementRoute?: string;
 }
 
 export interface InitializeHmacMessageAuthOptions {
@@ -125,3 +127,73 @@ export interface SignMessageWithRedisInput {
 export interface VerifyMessageWithRedisInput extends SignMessageWithRedisInput {
   signature: string;
 }
+
+export interface HmacInternalManagementRequestInput {
+  method: string;
+  path: string;
+  headers: Record<string, string | string[] | undefined>;
+  rawBody?: unknown;
+  now?: number;
+  maxSkewMs?: number;
+  onBadSignature?: OnBadHttpSignature;
+  metadata?: unknown;
+}
+
+export interface HmacInternalManagementRequestResult {
+  handled: boolean;
+  status: number;
+  body: Record<string, unknown>;
+  verifiedAuth?: VerifiedHttpRequest | null;
+}
+
+export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete";
+
+export type PropagateApiFetch =
+  | ((url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>)
+  | ((url: string, options: RequestInit) => Promise<Response>);
+
+export interface PropagateHmacClientOptions {
+  operation: HmacInternalPropagationOperation;
+  targets: string[];
+  apiFetch?: PropagateApiFetch;
+  headers?: HeadersInit;
+  clientId?: string;
+  secret?: string;
+  secretHash?: string;
+  expiresAt?: number | Date | null;
+}
+
+export interface PropagateHmacClientResult {
+  target: string;
+  url: string;
+  operation: HmacInternalPropagationOperation;
+  status: number;
+  accepted: boolean;
+  body: unknown;
+  error?: string;
+}
+
+export type PropagateServiceCreateOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+  plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+};
+
+export type PropagateServiceUpdateOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+  plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+};
+
+export type PropagateServiceDeleteOptions = {
+  propagateClientId: CreateHmacClientOptions["clientId"];
+  useClientId?: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+};
+
+export type PropagateServiceHealthOptions = {
+  useClientId: CreateHmacClientOptions["clientId"];
+  targetApis: PropagateHmacClientOptions["targets"];
+};
