@@ -16,6 +16,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 - `feat(http): add internal management middleware and low-level request handler with bootstrap-then-auth behavior`
 - `feat(http): add propagateClientToApis helper for one-to-many key distribution with 201/403 acceptance reporting`
 - `docs(http): document internal management route and propagation helpers in root, Express, and NestJS guides`
+- `docs(guides): add complete framework-agnostic shared service example to Express and NestJS docs`
 - `feat(http): add optional onBadSignature callback in initializeHmacHttpAuth for BAD_SIGNATURE attempts`
 - `feat(http): pass middleware request metadata (ip/forwardedFor/remoteAddress) to onBadSignature callback`
 - `docs(http): document onBadSignature callback in root, Express, and NestJS guides`
