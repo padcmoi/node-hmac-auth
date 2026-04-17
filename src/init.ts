@@ -211,8 +211,14 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
           throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot regenerate secret: client not found", 404);
         }
 
-        const secretLength = regenerateOptions?.secretLengthBytes ?? defaultSecretLengthBytes;
-        const secret = generateSecret(secretLength);
+        let secret: string;
+        if (regenerateOptions?.plainSecret !== undefined) {
+          assertPlainSecret(regenerateOptions.plainSecret);
+          secret = regenerateOptions.plainSecret;
+        } else {
+          const secretLength = regenerateOptions?.secretLengthBytes ?? defaultSecretLengthBytes;
+          secret = generateSecret(secretLength);
+        }
         const now = Date.now();
         const expiresAt =
           regenerateOptions?.expiresAt !== undefined

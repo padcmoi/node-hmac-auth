@@ -95,6 +95,7 @@ export interface CreateHmacClientOptions {
 export interface RegenerateHmacSecretOptions {
   expiresAt?: number | Date | null;
   secretLengthBytes?: number;
+  plainSecret?: string;
   preserveExpiresAt?: boolean;
 }
 

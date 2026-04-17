@@ -517,6 +517,40 @@ describe("HMAC auth", () => {
     ).rejects.toThrow("plainSecret cannot be empty");
   });
 
+  it("supports regenerateSecret with provided plainSecret", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_regen_plain_secret", maxSkewMs: 5000 });
+
+    await auth.clients.create({
+      clientId: "client_regen",
+      plainSecret: "first_secret",
+    });
+
+    const regenerated = await auth.clients.regenerateSecret("client_regen", {
+      plainSecret: "my_custom_secret",
+    });
+
+    expect(regenerated.secret).toBe("my_custom_secret");
+    expect(regenerated.secretHash).toBe(hashClientSecret("my_custom_secret"));
+    expect((await auth.clients.get("client_regen"))?.secretHash).toBe(hashClientSecret("my_custom_secret"));
+  });
+
+  it("keeps random regeneration when plainSecret is not provided", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_regen_random", maxSkewMs: 5000 });
+
+    await auth.clients.create({
+      clientId: "client_regen_random",
+      plainSecret: "seed_secret",
+    });
+
+    const regenerated = await auth.clients.regenerateSecret("client_regen_random", {
+      secretLengthBytes: 24,
+    });
+
+    expect(regenerated.secret.length).toBe(48);
+  });
+
   it("supports secretToken for deterministic tokenized secret hashes", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({
@@ -676,6 +710,27 @@ describe("HMAC auth", () => {
         message: { id: 42, event: "order.created" },
       }),
     ).rejects.toMatchObject({ code: "CLIENT_NOT_FOUND", status: 404 });
+  });
+
+  it("supports message regenerateSecret with provided plainSecret", async () => {
+    const redis = new FakeRedis();
+    const messageAuth = initializeHmacMessageAuth({
+      redis,
+      namespace: "tenant_msg_regen_plain",
+    });
+
+    await messageAuth.clients.create({
+      clientId: "app_msg_regen",
+      plainSecret: "initial_msg_secret",
+    });
+
+    const regenerated = await messageAuth.clients.regenerateSecret("app_msg_regen", {
+      plainSecret: "custom_msg_secret",
+    });
+
+    expect(regenerated.secret).toBe("custom_msg_secret");
+    expect(regenerated.secretHash).toBe(hashClientSecret("custom_msg_secret"));
+    expect((await messageAuth.clients.get("app_msg_regen"))?.secretHash).toBe(hashClientSecret("custom_msg_secret"));
   });
 
   it("signs fetch requests with helper", async () => {
