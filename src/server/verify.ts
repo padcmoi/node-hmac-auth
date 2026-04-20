@@ -1,5 +1,6 @@
 import { HmacAuthError } from "../errors.js";
 import { safeEqualHex, signRequest } from "../hmac.js";
+import { extractClientIp, isClientIpAllowed } from "../ip.js";
 import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../stores/redis.js";
 import type { BadHttpSignatureEvent, VerifiedHttpRequest, VerifyHttpSignatureInput } from "../types.js";
 import { getHeader, normalizePath, toBodyString } from "../utils.js";
@@ -63,6 +64,26 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
 
   if (clientRecord.expiresAt != null && now > clientRecord.expiresAt) {
     throw new HmacAuthError("CLIENT_EXPIRED", "Client secret has expired");
+  }
+
+  if (clientRecord.allowedIps.length > 0) {
+    const metadata =
+      input.metadata && typeof input.metadata === "object" ? (input.metadata as Record<string, unknown>) : undefined;
+    const clientIp = extractClientIp(
+      metadata?.ip,
+      metadata?.ips,
+      metadata?.forwardedFor,
+      getHeader(input.headers, "x-forwarded-for"),
+      metadata?.remoteAddress,
+    );
+
+    if (!clientIp) {
+      throw new HmacAuthError("MISSING_CLIENT_IP", "Client IP is required for this clientId allowlist", 403);
+    }
+
+    if (!isClientIpAllowed(clientIp, clientRecord.allowedIps)) {
+      throw new HmacAuthError("CLIENT_IP_NOT_ALLOWED", `Client IP '${clientIp}' is not allowed for clientId '${clientId}'`, 403);
+    }
   }
 
   const normalizedPath = normalizePath(input.path);

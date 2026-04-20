@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
 import { HmacAuthError } from "../errors.js";
 import { hashClientSecret } from "../hmac.js";
+import { normalizeAllowedIpRules } from "../ip.js";
 import {
   assertRedisClient,
   RedisCredentialStore,
@@ -63,6 +64,7 @@ function mapCredential(clientId: string, record: StoredClientCredentialRecord): 
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     expiresAt: record.expiresAt,
+    allowedIps: record.allowedIps,
   };
 }
 
@@ -83,8 +85,14 @@ export interface InitializedHmacMessageAuth {
     get: (clientId: string) => Promise<HmacClientCredential | null>;
     delete: (clientId: string) => Promise<void>;
     regenerateSecret: (clientId: string, options?: RegenerateHmacSecretOptions) => Promise<HmacClientCredentialWithSecret>;
-    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null) => Promise<void>;
-    setSecretHash: (clientId: string, secretHash: string, expiresAt?: number | Date | null) => Promise<void>;
+    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null, allowedIps?: string[]) => Promise<void>;
+    setSecretHash: (
+      clientId: string,
+      secretHash: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+    ) => Promise<void>;
+    setAllowedIps: (clientId: string, allowedIps: string[]) => Promise<void>;
     getSecretHash: (clientId: string) => Promise<string | null>;
   };
 }
@@ -177,6 +185,7 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
           createdAt: now,
           updatedAt: now,
           expiresAt: normalizeExpiresAt(createOptions.expiresAt),
+          allowedIps: normalizeAllowedIpRules(createOptions.allowedIps),
         };
 
         await credentialStore.setClientRecord(createOptions.clientId, record);
@@ -227,6 +236,10 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
           createdAt: existing.createdAt || now,
           updatedAt: now,
           expiresAt,
+          allowedIps:
+            regenerateOptions?.allowedIps !== undefined
+              ? normalizeAllowedIpRules(regenerateOptions.allowedIps)
+              : existing.allowedIps,
         };
 
         await credentialStore.setClientRecord(clientId, updatedRecord);
@@ -235,7 +248,7 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
           secret,
         };
       },
-      setSecret: async (clientId, secret, expiresAt) => {
+      setSecret: async (clientId, secret, expiresAt, allowedIps) => {
         assertClientId(clientId);
         const now = Date.now();
         const existing = await credentialStore.getClientRecord(clientId);
@@ -244,10 +257,11 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
           createdAt: existing?.createdAt || now,
           updatedAt: now,
           expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
+          allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
         };
         await credentialStore.setClientRecord(clientId, record);
       },
-      setSecretHash: async (clientId, secretHash, expiresAt) => {
+      setSecretHash: async (clientId, secretHash, expiresAt, allowedIps) => {
         assertClientId(clientId);
         const now = Date.now();
         const existing = await credentialStore.getClientRecord(clientId);
@@ -256,8 +270,25 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
           createdAt: existing?.createdAt || now,
           updatedAt: now,
           expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
+          allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
         };
         await credentialStore.setClientRecord(clientId, record);
+      },
+      setAllowedIps: async (clientId, allowedIps) => {
+        assertClientId(clientId);
+        const now = Date.now();
+        const existing = await credentialStore.getClientRecord(clientId);
+        if (!existing) {
+          throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot set allowedIps: client not found", 404);
+        }
+
+        await credentialStore.setClientRecord(clientId, {
+          secretHash: existing.secretHash,
+          createdAt: existing.createdAt || now,
+          updatedAt: now,
+          expiresAt: existing.expiresAt ?? null,
+          allowedIps: normalizeAllowedIpRules(allowedIps),
+        });
       },
       getSecretHash: async (clientId) => {
         assertClientId(clientId);

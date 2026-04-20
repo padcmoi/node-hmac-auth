@@ -81,6 +81,7 @@ export interface HmacClientCredential {
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
+  allowedIps: string[];
 }
 
 export interface HmacClientCredentialWithSecret extends HmacClientCredential {
@@ -92,6 +93,7 @@ export interface CreateHmacClientOptions {
   expiresAt?: number | Date | null;
   secretLengthBytes?: number;
   plainSecret?: string;
+  allowedIps?: string[];
 }
 
 export interface RegenerateHmacSecretOptions {
@@ -99,6 +101,7 @@ export interface RegenerateHmacSecretOptions {
   secretLengthBytes?: number;
   plainSecret?: string;
   preserveExpiresAt?: boolean;
+  allowedIps?: string[];
 }
 
 export interface SignMessageInput {
@@ -161,6 +164,7 @@ export interface PropagateHmacClientOptions {
   secret?: string;
   secretHash?: string;
   expiresAt?: number | Date | null;
+  allowedIps?: string[];
 }
 
 export interface PropagateHmacClientResult {
@@ -178,6 +182,7 @@ export type PropagateServiceCreateOptions = {
   useClientId?: CreateHmacClientOptions["clientId"];
   targetApis: PropagateHmacClientOptions["targets"];
   plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+  allowedIps: NonNullable<PropagateHmacClientOptions["allowedIps"]>;
 };
 
 export type PropagateServiceUpdateOptions = {
@@ -185,6 +190,7 @@ export type PropagateServiceUpdateOptions = {
   useClientId?: CreateHmacClientOptions["clientId"];
   targetApis: PropagateHmacClientOptions["targets"];
   plainSecret: NonNullable<PropagateHmacClientOptions["secret"]>;
+  allowedIps: NonNullable<PropagateHmacClientOptions["allowedIps"]>;
 };
 
 export type PropagateServiceDeleteOptions = {

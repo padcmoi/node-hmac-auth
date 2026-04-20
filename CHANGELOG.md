@@ -8,6 +8,9 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 
 - `feat(runtime): add createHmacRuntime factory with createSignedFetchFromClientId and signedFetchWithClientId helpers`
 - `feat(runtime): add hmacHttpMiddleware(...clientIds) helper in createHmacRuntime for scoped clientId allowlist on protected routes`
+- `feat(security): add per-client allowedIps (IP/CIDR) restriction with 403 enforcement in HTTP verification`
+- `feat(http): support allowedIps propagation through internal management route and propagateClientToApis`
+- `feat(clients): add allowedIps support to create/regenerate/setSecret/setSecretHash and new setAllowedIps helper`
 - `fix(types): expose HmacRuntime as inferred ReturnType<typeof createHmacRuntime> instead of explicit method signatures`
 - `fix(types): make propagateClientToApis apiFetch accept both createHttpSignedFetchClient signer and RequestInit-based wrappers`
 - `fix(clients): add missing plainSecret option in regenerateSecret (http + message) while preserving random generation fallback`

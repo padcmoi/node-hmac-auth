@@ -6,6 +6,7 @@ import {
 } from "./client/signed-fetch.js";
 import { HmacAuthError } from "./errors.js";
 import { hashClientSecret } from "./hmac.js";
+import { normalizeAllowedIpRules } from "./ip.js";
 import { createExpressHttpHmacMiddleware } from "./server/express.js";
 import { verifyHttpSignature as verifyHttpSignatureCore } from "./server/verify.js";
 import {
@@ -75,6 +76,7 @@ function mapCredential(clientId: string, record: StoredClientCredentialRecord): 
     createdAt: record.createdAt,
     updatedAt: record.updatedAt,
     expiresAt: record.expiresAt,
+    allowedIps: record.allowedIps,
   };
 }
 
@@ -135,6 +137,22 @@ function parseExpiresAtFromPayload(payload: Record<string, unknown>): number | n
     throw new Error("expiresAt must be a valid timestamp");
   }
   return numeric;
+}
+
+function parseAllowedIpsFromPayload(payload: Record<string, unknown>): string[] | undefined {
+  if (!("allowedIps" in payload)) {
+    return undefined;
+  }
+
+  if (payload.allowedIps == null) {
+    return [];
+  }
+
+  if (!Array.isArray(payload.allowedIps)) {
+    throw new Error("allowedIps must be an array of IP/CIDR strings");
+  }
+
+  return normalizeAllowedIpRules(payload.allowedIps as string[]);
 }
 
 function resolveTargetInternalUrl(target: string, routePath: string): string {
@@ -233,8 +251,14 @@ export interface InitializedHmacHttpAuth {
     get: (clientId: string) => Promise<HmacClientCredential | null>;
     delete: (clientId: string) => Promise<void>;
     regenerateSecret: (clientId: string, options?: RegenerateHmacSecretOptions) => Promise<HmacClientCredentialWithSecret>;
-    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null) => Promise<void>;
-    setSecretHash: (clientId: string, secretHash: string, expiresAt?: number | Date | null) => Promise<void>;
+    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null, allowedIps?: string[]) => Promise<void>;
+    setSecretHash: (
+      clientId: string,
+      secretHash: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+    ) => Promise<void>;
+    setAllowedIps: (clientId: string, allowedIps: string[]) => Promise<void>;
     getSecretHash: (clientId: string) => Promise<string | null>;
   };
 }
@@ -284,6 +308,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         createdAt: now,
         updatedAt: now,
         expiresAt: normalizeExpiresAt(createOptions.expiresAt),
+        allowedIps: normalizeAllowedIpRules(createOptions.allowedIps),
       };
 
       await credentialStore.setClientRecord(createOptions.clientId, record);
@@ -338,6 +363,10 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         createdAt: existing.createdAt || now,
         updatedAt: now,
         expiresAt,
+        allowedIps:
+          regenerateOptions?.allowedIps !== undefined
+            ? normalizeAllowedIpRules(regenerateOptions.allowedIps)
+            : existing.allowedIps,
       };
 
       await credentialStore.setClientRecord(clientId, updatedRecord);
@@ -346,7 +375,12 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         secret,
       };
     },
-    setSecret: async (clientId: string, secret: string, expiresAt?: number | Date | null): Promise<void> => {
+    setSecret: async (
+      clientId: string,
+      secret: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+    ): Promise<void> => {
       assertClientId(clientId);
       const now = Date.now();
       const existing = await credentialStore.getClientRecord(clientId);
@@ -355,10 +389,16 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         createdAt: existing?.createdAt || now,
         updatedAt: now,
         expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
+        allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
       };
       await credentialStore.setClientRecord(clientId, record);
     },
-    setSecretHash: async (clientId: string, secretHash: string, expiresAt?: number | Date | null): Promise<void> => {
+    setSecretHash: async (
+      clientId: string,
+      secretHash: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+    ): Promise<void> => {
       assertClientId(clientId);
       const now = Date.now();
       const existing = await credentialStore.getClientRecord(clientId);
@@ -367,7 +407,26 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         createdAt: existing?.createdAt || now,
         updatedAt: now,
         expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
+        allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
       };
+      await credentialStore.setClientRecord(clientId, record);
+    },
+    setAllowedIps: async (clientId: string, allowedIps: string[]): Promise<void> => {
+      assertClientId(clientId);
+      const now = Date.now();
+      const existing = await credentialStore.getClientRecord(clientId);
+      if (!existing) {
+        throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot set allowedIps: client not found", 404);
+      }
+
+      const record: StoredClientCredentialRecord = {
+        secretHash: existing.secretHash,
+        createdAt: existing.createdAt || now,
+        updatedAt: now,
+        expiresAt: existing.expiresAt ?? null,
+        allowedIps: normalizeAllowedIpRules(allowedIps),
+      };
+
       await credentialStore.setClientRecord(clientId, record);
     },
     getSecretHash: async (clientId: string): Promise<string | null> => {
@@ -498,6 +557,13 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       return forbiddenInternal("expiresAt must be a valid timestamp");
     }
 
+    let allowedIps: string[] | undefined;
+    try {
+      allowedIps = parseAllowedIpsFromPayload(payload);
+    } catch {
+      return forbiddenInternal("allowedIps must be an array of valid IP/CIDR strings");
+    }
+
     const secret = typeof payload.secret === "string" ? payload.secret : undefined;
     const secretHash = typeof payload.secretHash === "string" ? payload.secretHash : undefined;
 
@@ -513,9 +579,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       }
 
       if (secret) {
-        await clients.setSecret(payloadClientId, secret, expiresAt);
+        await clients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
       } else {
-        await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt);
+        await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
       }
 
       return {
@@ -535,9 +601,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     }
 
     if (secret) {
-      await clients.setSecret(payloadClientId, secret, expiresAt);
+      await clients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
     } else {
-      await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt);
+      await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
     }
 
     return {
@@ -635,6 +701,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       if (operation !== "delete" && !propagateOptions.secret && !propagateOptions.secretHash) {
         throw new Error("secret or secretHash is required for create/update propagation");
       }
+      if ((operation === "create" || operation === "update") && !Array.isArray(propagateOptions.allowedIps)) {
+        throw new Error("allowedIps array is required for create/update propagation");
+      }
     }
 
     const payload: Record<string, unknown> = {};
@@ -648,6 +717,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       }
       if (propagateOptions.expiresAt !== undefined) {
         payload.expiresAt = normalizeExpiresAt(propagateOptions.expiresAt);
+      }
+      if (propagateOptions.allowedIps !== undefined) {
+        payload.allowedIps = normalizeAllowedIpRules(propagateOptions.allowedIps);
       }
     }
 

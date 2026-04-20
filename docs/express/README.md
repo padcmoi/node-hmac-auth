@@ -61,6 +61,7 @@ if (!existing) {
     clientId: "client_mobile",
     plainSecret: "superSharedSecret", // use a secure secret manager in real systems
     expiresAt: null, // optional
+    allowedIps: ["195.7.8.9", "195.7.8.0/24"], // optional IP/CIDR allowlist for this clientId
   });
 }
 ```
@@ -148,6 +149,8 @@ app.get("/public/call-peer-get", async (_req, res) => {
 
 - Missing `x-client-id` -> `401`
 - Unknown `clientId` -> `401`
+- Missing source IP while `allowedIps` is configured -> `403`
+- Source IP not allowed by `allowedIps` -> `403`
 - Bad signature -> `401`
 - Expired client secret -> `401`
 - Replayed nonce -> `401`
@@ -235,6 +238,7 @@ const results = await hmacAuth.propagateClientToApis({
   targets: ["https://api-a.example.com", "https://api-b.example.com"],
   clientId: "client_mobile",
   secret: "superSharedSecret",
+  allowedIps: ["195.7.8.9", "195.7.8.0/24"], // required for create/update propagation
   apiFetch: signer,
 });
 

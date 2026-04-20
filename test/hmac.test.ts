@@ -458,6 +458,102 @@ describe("HMAC auth", () => {
     ).rejects.toMatchObject({ code: "CLIENT_EXPIRED", status: 401 });
   });
 
+  it("supports client IP/CIDR allowlist on verify", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_ip_allowlist", maxSkewMs: 5000 });
+
+    await auth.clients.create({
+      clientId: "ip_locked_client",
+      plainSecret: "secret_ip_lock",
+      allowedIps: ["195.7.8.9", "195.7.8.0/24"],
+    });
+
+    const makeHeaders = (nonce: string, timestamp: number) =>
+      headersToRecord(
+        buildHttpSignedHeaders({
+          method: "GET",
+          url: "/secure/get",
+          body: "",
+          clientId: "ip_locked_client",
+          secret: "secret_ip_lock",
+          timestamp,
+          nonce,
+        }),
+      );
+
+    const timestamp = Date.now();
+    const headersAllowed = makeHeaders("nonce_ip_allowed", timestamp);
+
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/secure/get",
+        headers: headersAllowed,
+        rawBody: "",
+        now: timestamp,
+        metadata: { ip: "195.7.8.9" },
+      }),
+    ).resolves.toMatchObject({ clientId: "ip_locked_client" });
+
+    const headersAllowedCidr = makeHeaders("nonce_ip_allowed_cidr", timestamp + 1);
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/secure/get",
+        headers: headersAllowedCidr,
+        rawBody: "",
+        now: timestamp + 1,
+        metadata: { ip: "195.7.8.44" },
+      }),
+    ).resolves.toMatchObject({ clientId: "ip_locked_client" });
+
+    const headersDenied = makeHeaders("nonce_ip_denied", timestamp + 2);
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/secure/get",
+        headers: headersDenied,
+        rawBody: "",
+        now: timestamp + 2,
+        metadata: { ip: "8.8.8.8" },
+      }),
+    ).rejects.toMatchObject({ code: "CLIENT_IP_NOT_ALLOWED", status: 403 });
+  });
+
+  it("rejects allowlisted clients when request IP is missing", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_ip_required", maxSkewMs: 5000 });
+
+    await auth.clients.create({
+      clientId: "ip_required_client",
+      plainSecret: "secret_ip_required",
+      allowedIps: ["195.7.8.9"],
+    });
+
+    const timestamp = Date.now();
+    const headers = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "GET",
+        url: "/secure/get",
+        body: "",
+        clientId: "ip_required_client",
+        secret: "secret_ip_required",
+        timestamp,
+        nonce: "nonce_missing_ip",
+      }),
+    );
+
+    await expect(
+      auth.verifyHttpSignature({
+        method: "GET",
+        path: "/secure/get",
+        headers,
+        rawBody: "",
+        now: timestamp,
+      }),
+    ).rejects.toMatchObject({ code: "MISSING_CLIENT_IP", status: 403 });
+  });
+
   it("supports client helpers create/list/delete/regenerate", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_admin", maxSkewMs: 5000 });
@@ -471,6 +567,7 @@ describe("HMAC auth", () => {
     expect(created.clientId).toBe("client_admin");
     expect(created.secret.length).toBe(32);
     expect(created.secretHash).toBeTruthy();
+    expect(created.allowedIps).toEqual([]);
 
     const ids = await auth.clients.listClientIds();
     expect(ids).toContain("client_admin");
@@ -478,6 +575,7 @@ describe("HMAC auth", () => {
     const regenerated = await auth.clients.regenerateSecret("client_admin");
     expect(regenerated.clientId).toBe("client_admin");
     expect(regenerated.secret).not.toBe(created.secret);
+    expect(regenerated.allowedIps).toEqual([]);
 
     await auth.clients.delete("client_admin");
     const deleted = await auth.clients.get("client_admin");
@@ -533,6 +631,32 @@ describe("HMAC auth", () => {
     expect(regenerated.secret).toBe("my_custom_secret");
     expect(regenerated.secretHash).toBe(hashClientSecret("my_custom_secret"));
     expect((await auth.clients.get("client_regen"))?.secretHash).toBe(hashClientSecret("my_custom_secret"));
+  });
+
+  it("supports allowedIps lifecycle on client credentials", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_allowed_ips_lifecycle", maxSkewMs: 5000 });
+
+    const created = await auth.clients.create({
+      clientId: "client_allowed_ips",
+      plainSecret: "secret_allowed_ips",
+      allowedIps: ["10.0.0.1", "10.0.0.0/24"],
+    });
+    expect(created.allowedIps).toEqual(["10.0.0.1", "10.0.0.0/24"]);
+
+    await auth.clients.setAllowedIps("client_allowed_ips", ["172.16.1.5", "172.16.0.0/16"]);
+    const afterSetAllowedIps = await auth.clients.get("client_allowed_ips");
+    expect(afterSetAllowedIps?.allowedIps).toEqual(["172.16.1.5", "172.16.0.0/16"]);
+
+    await auth.clients.setSecret("client_allowed_ips", "secret_rotated", undefined, ["192.168.1.1"]);
+    const afterSetSecret = await auth.clients.get("client_allowed_ips");
+    expect(afterSetSecret?.allowedIps).toEqual(["192.168.1.1"]);
+
+    const regenerated = await auth.clients.regenerateSecret("client_allowed_ips", {
+      plainSecret: "secret_rotated_again",
+      allowedIps: ["203.0.113.0/24"],
+    });
+    expect(regenerated.allowedIps).toEqual(["203.0.113.0/24"]);
   });
 
   it("keeps random regeneration when plainSecret is not provided", async () => {
@@ -822,6 +946,7 @@ describe("HMAC auth", () => {
     const authorizedBody = JSON.stringify({
       clientId: "sync_client",
       secret: "sync_secret",
+      allowedIps: ["10.0.0.1", "10.0.0.0/24"],
     });
 
     const createHeaders = headersToRecord(
@@ -845,11 +970,14 @@ describe("HMAC auth", () => {
     });
 
     expect(authorizedCreate.status).toBe(201);
-    expect((await auth.clients.get("sync_client"))?.clientId).toBe("sync_client");
+    const createdSyncClient = await auth.clients.get("sync_client");
+    expect(createdSyncClient?.clientId).toBe("sync_client");
+    expect(createdSyncClient?.allowedIps).toEqual(["10.0.0.1", "10.0.0.0/24"]);
 
     const updateBody = JSON.stringify({
       clientId: "sync_client",
       secret: "sync_secret_rotated",
+      allowedIps: ["172.16.0.0/16"],
     });
 
     const updateHeaders = headersToRecord(
@@ -876,6 +1004,7 @@ describe("HMAC auth", () => {
 
     const updatedClient = await auth.clients.get("sync_client");
     expect(updatedClient?.secretHash).toBe(hashClientSecret("sync_secret_rotated"));
+    expect(updatedClient?.allowedIps).toEqual(["172.16.0.0/16"]);
   });
 
   it("creates internal management middleware and skips unknown routes", async () => {
@@ -962,6 +1091,7 @@ describe("HMAC auth", () => {
       targets: ["https://api-1.example.com", "https://api-2.example.com"],
       clientId: "client_sync",
       secret: "secret_sync",
+      allowedIps: ["195.7.8.9", "195.7.8.0/24"],
       apiFetch: fetchMock as any,
     });
 
@@ -973,6 +1103,38 @@ describe("HMAC auth", () => {
     expect(results[1]?.status).toBe(403);
     expect(results[0]?.url).toContain("/api/internal/hmac");
     expect(results[1]?.url).toContain("/api/internal/hmac");
+
+    const firstCallOptions = (fetchMock.mock.calls[0]?.[1] ?? {}) as RequestInit;
+    const firstCallBody = JSON.parse(String(firstCallOptions.body));
+    expect(firstCallBody.allowedIps).toEqual(["195.7.8.9", "195.7.8.0/24"]);
+  });
+
+  it("requires allowedIps for create/update propagation", async () => {
+    const redis = new FakeRedis();
+    const auth = initializeHmacHttpAuth({
+      redis,
+      namespace: "tenant_propagate_allowed_ips_required",
+      internalManagementRoute: "/api/internal/hmac",
+      maxSkewMs: 5000,
+    });
+
+    await expect(
+      auth.propagateClientToApis({
+        operation: "create",
+        targets: ["https://api-1.example.com"],
+        clientId: "client_sync",
+        secret: "secret_sync",
+      }),
+    ).rejects.toThrow("allowedIps array is required for create/update propagation");
+
+    await expect(
+      auth.propagateClientToApis({
+        operation: "update",
+        targets: ["https://api-1.example.com"],
+        clientId: "client_sync",
+        secret: "secret_sync",
+      }),
+    ).rejects.toThrow("allowedIps array is required for create/update propagation");
   });
 
   it("rejects propagation when internal management route is disabled", async () => {
