@@ -1,5 +1,5 @@
-import { hashClientSecret, signRequest } from "../hmac.js";
-import { generateNonce, isJsonObjectBody, normalizePath, toBodyString } from "../utils.js";
+import { hashClientSecret, signRequest } from "../../core/crypto.js";
+import { generateNonce, isJsonObjectBody, normalizePath, toBodyString } from "../../core/utils.js";
 
 type SignedBody = string | Buffer | Uint8Array | URLSearchParams | Record<string, unknown> | null;
 
@@ -45,7 +45,7 @@ export type SignedHttpFetchClientCallOptions = Omit<
 
 function buildBodyForRequest(
   body: SignedBody,
-  headers: Headers,
+  headers: Headers
 ): {
   bodyForRequest: BodyInit | undefined;
   bodyForSignature: string;

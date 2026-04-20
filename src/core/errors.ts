@@ -7,9 +7,12 @@ export type HmacAuthErrorCode =
   | "TIMESTAMP_SKEW"
   | "UNKNOWN_CLIENT"
   | "CLIENT_EXPIRED"
+  | "MISSING_CLIENT_IP"
+  | "CLIENT_IP_NOT_ALLOWED"
   | "CLIENT_NOT_FOUND"
   | "BAD_SIGNATURE"
   | "REPLAYED_NONCE"
+  | "INTERNAL_ROUTE_DISABLED"
   | "INTERNAL_ERROR";
 
 export class HmacAuthError extends Error {

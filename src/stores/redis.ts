@@ -1,3 +1,5 @@
+import { sanitizeAllowedIpRules } from "../core/ip.js";
+
 export interface RedisLikeClient {
   hGet?: (key: string, field: string) => Promise<string | null> | string | null;
   hget?: (key: string, field: string) => Promise<string | null> | string | null;
@@ -7,7 +9,7 @@ export interface RedisLikeClient {
   hdel?: (key: string, field: string) => Promise<unknown> | unknown;
   hKeys?: (key: string) => Promise<string[]> | string[];
   hkeys?: (key: string) => Promise<string[]> | string[];
-  set?: (key: string, value: string, ...args: unknown[]) => Promise<unknown> | unknown;
+  set?: (key: string, value: string, ...args: any[]) => Promise<unknown> | unknown;
 }
 
 export interface RedisNamespaceKeys {
@@ -117,6 +119,7 @@ export interface StoredClientCredentialRecord {
   createdAt: number;
   updatedAt: number;
   expiresAt: number | null;
+  allowedIps: string[];
 }
 
 function isFiniteNumber(value: unknown): value is number {
@@ -132,6 +135,7 @@ function parseStoredClientRecord(rawValue: string): StoredClientCredentialRecord
         createdAt: isFiniteNumber(parsed.createdAt) ? parsed.createdAt : 0,
         updatedAt: isFiniteNumber(parsed.updatedAt) ? parsed.updatedAt : 0,
         expiresAt: isFiniteNumber(parsed.expiresAt) ? parsed.expiresAt : null,
+        allowedIps: sanitizeAllowedIpRules(parsed.allowedIps),
       };
     }
   } catch {
@@ -143,6 +147,7 @@ function parseStoredClientRecord(rawValue: string): StoredClientCredentialRecord
     createdAt: 0,
     updatedAt: 0,
     expiresAt: null,
+    allowedIps: [],
   };
 }
 
@@ -182,6 +187,7 @@ export class RedisCredentialStore {
       createdAt: existing?.createdAt || now,
       updatedAt: now,
       expiresAt: existing?.expiresAt ?? null,
+      allowedIps: existing?.allowedIps ?? [],
     });
   }
 

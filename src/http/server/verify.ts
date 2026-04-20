@@ -1,10 +1,23 @@
-import { HmacAuthError } from "../errors.js";
-import { safeEqualHex, signRequest } from "../hmac.js";
-import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../stores/redis.js";
-import type { VerifiedHttpRequest, VerifyHttpSignatureInput } from "../types.js";
-import { getHeader, normalizePath, toBodyString } from "../utils.js";
+import { safeEqualHex, signRequest } from "../../core/crypto.js";
+import { HmacAuthError } from "../../core/errors.js";
+import { extractClientIp, isClientIpAllowed } from "../../core/ip.js";
+import type { BadHttpSignatureEvent, VerifiedHttpRequest, VerifyHttpSignatureInput } from "../../core/types.js";
+import { getHeader, normalizePath, toBodyString } from "../../core/utils.js";
+import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../../stores/redis.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
+
+async function notifyBadSignature(event: BadHttpSignatureEvent, input: VerifyHttpSignatureInput): Promise<void> {
+  if (!input.onBadSignature) {
+    return;
+  }
+
+  try {
+    await input.onBadSignature(event);
+  } catch {
+    // Never break auth flow if callback fails.
+  }
+}
 
 export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Promise<VerifiedHttpRequest> {
   assertRedisClient(input.redis);
@@ -53,9 +66,30 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
     throw new HmacAuthError("CLIENT_EXPIRED", "Client secret has expired");
   }
 
+  if (clientRecord.allowedIps.length > 0) {
+    const metadata =
+      input.metadata && typeof input.metadata === "object" ? (input.metadata as Record<string, unknown>) : undefined;
+    const clientIp = extractClientIp(
+      metadata?.ip,
+      metadata?.ips,
+      metadata?.forwardedFor,
+      getHeader(input.headers, "x-forwarded-for"),
+      metadata?.remoteAddress
+    );
+
+    if (!clientIp) {
+      throw new HmacAuthError("MISSING_CLIENT_IP", "Client IP is required for this clientId allowlist", 403);
+    }
+
+    if (!isClientIpAllowed(clientIp, clientRecord.allowedIps)) {
+      throw new HmacAuthError("CLIENT_IP_NOT_ALLOWED", `Client IP '${clientIp}' is not allowed for clientId '${clientId}'`, 403);
+    }
+  }
+
+  const normalizedPath = normalizePath(input.path);
   const expectedSignature = signRequest({
     method: input.method,
-    path: normalizePath(input.path),
+    path: normalizedPath,
     timestamp,
     nonce,
     body: toBodyString(input.rawBody),
@@ -63,6 +97,22 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
   });
 
   if (!safeEqualHex(expectedSignature, signature)) {
+    await notifyBadSignature(
+      {
+        clientId,
+        method: input.method,
+        path: normalizedPath,
+        timestamp,
+        nonce,
+        receivedSignature: signature,
+        expectedSignature,
+        headers: input.headers,
+        rawBody: input.rawBody,
+        metadata: input.metadata,
+      },
+      input
+    );
+
     throw new HmacAuthError("BAD_SIGNATURE", "Invalid HMAC signature");
   }
 

@@ -1,7 +1,7 @@
 import { createHmac } from "node:crypto";
-import { hashBody, hashClientSecret, safeEqualHex } from "../hmac.js";
-import type { SignMessageInput, SignedMessage, VerifyMessageInput } from "../types.js";
-import { toMessageString } from "../utils.js";
+import { hashBody, hashClientSecret, safeEqualHex } from "../core/crypto.js";
+import type { SignMessageInput, SignedMessage, VerifyMessageInput } from "../core/types.js";
+import { toMessageString } from "../core/utils.js";
 
 function normalizeClientId(clientId: string): string {
   const normalized = clientId.trim();
