@@ -3,7 +3,7 @@ name: Publish to npm
 on:
   push:
     tags:
-      - '[0-9]*.[0-9]*.[0-9]*'
+      - "[0-9]*.[0-9]*.[0-9]*"
   workflow_dispatch:
 
 permissions:
@@ -24,8 +24,8 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '24'
-          registry-url: 'https://registry.npmjs.org'
+          node-version: "24"
+          registry-url: "https://registry.npmjs.org"
 
       - name: Validate semver tag
         id: tag

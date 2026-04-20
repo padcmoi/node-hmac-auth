@@ -34,7 +34,7 @@ describe("HMAC auth - HTTP middleware", () => {
         secret: "secret_a",
         timestamp: ts1,
         nonce: "nonce_mw_1",
-      }),
+      })
     );
 
     const req1: any = {
@@ -61,7 +61,7 @@ describe("HMAC auth - HTTP middleware", () => {
         secret: "secret_a",
         timestamp: ts2,
         nonce: "nonce_mw_2",
-      }),
+      })
     );
 
     const req2: any = {
@@ -88,7 +88,7 @@ describe("HMAC auth - HTTP middleware", () => {
         secret: "secret_a",
         timestamp: ts3,
         nonce: "nonce_mw_3",
-      }),
+      })
     );
 
     const req3: any = {

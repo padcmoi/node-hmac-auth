@@ -25,6 +25,7 @@ Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed bel
 - `docs(http): document onBadSignature callback in root, Express, and NestJS guides`
 - `chore(refactor): reorganize src into core/http/message/runtime/stores modules with a single public entrypoint`
 - `docs(architecture): add contributor architecture guide for core/http/message/runtime/stores layout`
+- `chore(tooling): add ESLint + Prettier setup with npm scripts (lint, lint:fix, format)`
 
 ## [0.4.1] - 2026-04-08
 

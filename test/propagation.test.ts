@@ -65,7 +65,7 @@ describe("HMAC auth - propagation", () => {
         targets: ["https://api-1.example.com"],
         clientId: "client_sync",
         secret: "secret_sync",
-      }),
+      })
     ).rejects.toThrow("allowedIps array is required for create/update propagation");
 
     await expect(
@@ -74,7 +74,7 @@ describe("HMAC auth - propagation", () => {
         targets: ["https://api-1.example.com"],
         clientId: "client_sync",
         secret: "secret_sync",
-      }),
+      })
     ).rejects.toThrow("allowedIps array is required for create/update propagation");
   });
 
@@ -92,7 +92,7 @@ describe("HMAC auth - propagation", () => {
         targets: ["https://api-1.example.com"],
         clientId: "client_sync",
         secret: "secret_sync",
-      }),
+      })
     ).rejects.toMatchObject({ code: "INTERNAL_ROUTE_DISABLED" });
   });
 });

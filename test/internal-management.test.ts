@@ -58,7 +58,7 @@ describe("HMAC auth - internal management", () => {
         secret: "bootstrap_secret",
         timestamp: Date.now(),
         nonce: "nonce_internal_create_1",
-      }),
+      })
     );
 
     const authorizedCreate = await auth.handleInternalManagementRequest({
@@ -89,7 +89,7 @@ describe("HMAC auth - internal management", () => {
         secret: "bootstrap_secret",
         timestamp: Date.now(),
         nonce: "nonce_internal_update_1",
-      }),
+      })
     );
 
     const updateResult = await auth.handleInternalManagementRequest({
