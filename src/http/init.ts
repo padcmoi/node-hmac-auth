@@ -1,21 +1,7 @@
 import { randomBytes } from "node:crypto";
-import {
-  createHttpSignedFetchClient,
-  type CreateHttpSignedFetchClientOptions,
-  type SignedHttpFetchClientCallOptions,
-} from "./client/signed-fetch.js";
-import { HmacAuthError } from "./errors.js";
-import { hashClientSecret } from "./hmac.js";
-import { normalizeAllowedIpRules } from "./ip.js";
-import { createExpressHttpHmacMiddleware } from "./server/express.js";
-import { verifyHttpSignature as verifyHttpSignatureCore } from "./server/verify.js";
-import {
-  RedisCredentialStore,
-  assertRedisClient,
-  resolveNamespace,
-  type RedisLikeClient,
-  type StoredClientCredentialRecord,
-} from "./stores/redis.js";
+import { hashClientSecret } from "../core/crypto.js";
+import { HmacAuthError } from "../core/errors.js";
+import { normalizeAllowedIpRules } from "../core/ip.js";
 import type {
   CreateHmacClientOptions,
   HmacClientCredential,
@@ -29,8 +15,22 @@ import type {
   RegenerateHmacSecretOptions,
   VerifiedHttpRequest,
   VerifyHttpWithRedisInput,
-} from "./types.js";
-import { normalizePath, toBodyString } from "./utils.js";
+} from "../core/types.js";
+import { normalizePath, toBodyString } from "../core/utils.js";
+import {
+  RedisCredentialStore,
+  assertRedisClient,
+  resolveNamespace,
+  type RedisLikeClient,
+  type StoredClientCredentialRecord,
+} from "../stores/redis.js";
+import {
+  createHttpSignedFetchClient,
+  type CreateHttpSignedFetchClientOptions,
+  type SignedHttpFetchClientCallOptions,
+} from "./client/signed-fetch.js";
+import { createExpressHttpHmacMiddleware } from "./server/express.js";
+import { verifyHttpSignature as verifyHttpSignatureCore } from "./server/verify.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
 const DEFAULT_SECRET_LENGTH_BYTES = 32;

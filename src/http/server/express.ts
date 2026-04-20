@@ -1,6 +1,6 @@
-import { HmacAuthError } from "../errors.js";
-import type { RedisLikeClient } from "../stores/redis.js";
-import type { OnBadHttpSignature } from "../types.js";
+import { HmacAuthError } from "../../core/errors.js";
+import type { OnBadHttpSignature } from "../../core/types.js";
+import type { RedisLikeClient } from "../../stores/redis.js";
 import { verifyHttpSignature } from "./verify.js";
 
 export interface ExpressHmacMiddlewareOptions {

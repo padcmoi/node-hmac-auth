@@ -1,5 +1,5 @@
-import type { SignedHttpFetchClientCallOptions } from "./client/signed-fetch.js";
-import type { InitializedHmacHttpAuth } from "./init.js";
+import type { SignedHttpFetchClientCallOptions } from "../http/client/signed-fetch.js";
+import type { InitializedHmacHttpAuth } from "../http/init.js";
 
 type HmacAuthRuntime = Pick<InitializedHmacHttpAuth, "clients" | "createHttpSignedFetchClient" | "verifyHttpRequest">;
 

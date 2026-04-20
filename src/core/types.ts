@@ -1,5 +1,5 @@
-import type { SignedHttpFetchClientCallOptions } from "./client/signed-fetch.js";
-import type { RedisLikeClient } from "./stores/redis.js";
+import type { SignedHttpFetchClientCallOptions } from "../http/client/signed-fetch.js";
+import type { RedisLikeClient } from "../stores/redis.js";
 
 export interface BadHttpSignatureEvent {
   clientId: string;
