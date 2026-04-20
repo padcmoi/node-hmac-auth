@@ -1,5 +1,5 @@
-export { HmacAuthError } from "./errors.js";
-export { buildSigningPayload, hashBody, hashClientSecret, safeEqualHex, signRequest } from "./hmac.js";
+export { buildSigningPayload, hashBody, hashClientSecret, safeEqualHex, signRequest } from "./core/crypto.js";
+export { HmacAuthError } from "./core/errors.js";
 
 export {
   buildHttpSignedHeaders,
@@ -9,14 +9,14 @@ export {
   type CreateHttpSignedFetchClientOptions,
   type SignedHttpFetchClientCallOptions,
   type SignedHttpFetchOptions,
-} from "./client/signed-fetch.js";
-export { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "./init.js";
+} from "./http/client/signed-fetch.js";
+export { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "./http/init.js";
 export { initializeHmacMessageAuth, type InitializedHmacMessageAuth } from "./message/init.js";
 export { buildMessageSigningPayload, signMessage, verifyMessage } from "./message/signature.js";
-export { createHmacRuntime, type HmacRuntime } from "./runtime.js";
+export { createHmacRuntime, type HmacRuntime } from "./runtime/create-runtime.js";
 
-export { captureRawBody, createExpressHttpHmacMiddleware, createHttpHmacMiddleware } from "./server/express.js";
-export { verifyHttpSignature } from "./server/verify.js";
+export { captureRawBody, createExpressHttpHmacMiddleware, createHttpHmacMiddleware } from "./http/server/express.js";
+export { verifyHttpSignature } from "./http/server/verify.js";
 
 export {
   buildRedisNamespaceKeys,
@@ -54,4 +54,4 @@ export type {
   VerifyHttpWithRedisInput,
   VerifyMessageInput,
   VerifyMessageWithRedisInput,
-} from "./types.js";
+} from "./core/types.js";

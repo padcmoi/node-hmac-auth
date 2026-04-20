@@ -1,14 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { HmacAuthError } from "../errors.js";
-import { hashClientSecret } from "../hmac.js";
-import { normalizeAllowedIpRules } from "../ip.js";
-import {
-  assertRedisClient,
-  RedisCredentialStore,
-  resolveNamespace,
-  type RedisLikeClient,
-  type StoredClientCredentialRecord,
-} from "../stores/redis.js";
+import { hashClientSecret } from "../core/crypto.js";
+import { HmacAuthError } from "../core/errors.js";
+import { normalizeAllowedIpRules } from "../core/ip.js";
 import type {
   CreateHmacClientOptions,
   HmacClientCredential,
@@ -18,7 +11,14 @@ import type {
   SignedMessage,
   SignMessageWithRedisInput,
   VerifyMessageWithRedisInput,
-} from "../types.js";
+} from "../core/types.js";
+import {
+  assertRedisClient,
+  RedisCredentialStore,
+  resolveNamespace,
+  type RedisLikeClient,
+  type StoredClientCredentialRecord,
+} from "../stores/redis.js";
 import { signMessage as signMessageCore, verifyMessage as verifyMessageCore } from "./signature.js";
 
 const DEFAULT_SECRET_LENGTH_BYTES = 32;

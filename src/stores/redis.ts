@@ -1,4 +1,4 @@
-import { sanitizeAllowedIpRules } from "../ip.js";
+import { sanitizeAllowedIpRules } from "../core/ip.js";
 
 export interface RedisLikeClient {
   hGet?: (key: string, field: string) => Promise<string | null> | string | null;
