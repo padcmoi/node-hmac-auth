@@ -31,7 +31,10 @@
     "test": "vitest run",
     "dev:test": "vitest",
     "check": "tsc --noEmit",
-    "prepublishOnly": "npm run check && npm run test && npm run build"
+    "prepublishOnly": "npm run check && npm run test && npm run build",
+    "lint": "eslint \"src/**/*.ts\"",
+    "lint:fix": "eslint \"src/**/*.ts\" --fix",
+    "format": "prettier --write ."
   },
   "keywords": [
     "hmac",
@@ -47,9 +50,13 @@
     "access": "public"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^24.6.0",
+    "eslint": "^10.2.1",
+    "prettier": "^3.8.3",
     "tsup": "^8.5.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.58.2",
     "vitest": "^3.2.4"
   }
 }

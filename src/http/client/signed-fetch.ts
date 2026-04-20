@@ -45,7 +45,7 @@ export type SignedHttpFetchClientCallOptions = Omit<
 
 function buildBodyForRequest(
   body: SignedBody,
-  headers: Headers,
+  headers: Headers
 ): {
   bodyForRequest: BodyInit | undefined;
   bodyForSignature: string;

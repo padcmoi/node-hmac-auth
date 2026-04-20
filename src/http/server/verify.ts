@@ -74,7 +74,7 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
       metadata?.ips,
       metadata?.forwardedFor,
       getHeader(input.headers, "x-forwarded-for"),
-      metadata?.remoteAddress,
+      metadata?.remoteAddress
     );
 
     if (!clientIp) {
@@ -110,7 +110,7 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
         rawBody: input.rawBody,
         metadata: input.metadata,
       },
-      input,
+      input
     );
 
     throw new HmacAuthError("BAD_SIGNATURE", "Invalid HMAC signature");

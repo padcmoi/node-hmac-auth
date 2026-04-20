@@ -50,7 +50,15 @@ export function toBodyString(rawBody: unknown): string {
     return JSON.stringify(rawBody);
   }
 
-  return String(rawBody);
+  if (typeof rawBody === "number" || typeof rawBody === "boolean" || typeof rawBody === "bigint") {
+    return `${rawBody}`;
+  }
+
+  if (typeof rawBody === "symbol" || typeof rawBody === "function") {
+    return rawBody.toString();
+  }
+
+  return "";
 }
 
 export function isJsonObjectBody(value: unknown): value is Record<string, unknown> {
@@ -142,5 +150,13 @@ export function toMessageString(message: unknown): string {
     return JSON.stringify(sortObjectKeysDeep(message));
   }
 
-  return String(message);
+  if (typeof message === "number" || typeof message === "boolean" || typeof message === "bigint") {
+    return `${message}`;
+  }
+
+  if (typeof message === "symbol" || typeof message === "function") {
+    return message.toString();
+  }
+
+  return "";
 }

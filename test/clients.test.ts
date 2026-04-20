@@ -60,7 +60,7 @@ describe("HMAC auth - clients", () => {
       auth.clients.create({
         clientId: "client_empty",
         plainSecret: "   ",
-      }),
+      })
     ).rejects.toThrow("plainSecret cannot be empty");
   });
 

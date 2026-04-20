@@ -380,7 +380,7 @@ export const http = {
       fetch: (input: string, options?: SignedHttpFetchClientCallOptions) => {
         if (!firstClientId) {
           throw new Error(
-            "Forbidden: signed fetch requires at least one clientId. Use http.useClientIds('svc-a').fetch(url, options).",
+            "Forbidden: signed fetch requires at least one clientId. Use http.useClientIds('svc-a').fetch(url, options)."
           );
         }
         return signedFetchWithClientId(input, firstClientId, options);

@@ -243,7 +243,7 @@ export interface InitializedHmacHttpAuth {
   }) => (req: any, res: any, next: (error?: unknown) => void) => Promise<void>;
   propagateClientToApis: (options: PropagateHmacClientOptions) => Promise<PropagateHmacClientResult[]>;
   createHttpSignedFetchClient: (
-    options: CreateHttpSignedFetchClientOptions,
+    options: CreateHttpSignedFetchClientOptions
   ) => (url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>;
   clients: {
     create: (options: CreateHmacClientOptions) => Promise<HmacClientCredentialWithSecret>;
@@ -256,7 +256,7 @@ export interface InitializedHmacHttpAuth {
       clientId: string,
       secretHash: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[],
+      allowedIps?: string[]
     ) => Promise<void>;
     setAllowedIps: (clientId: string, allowedIps: string[]) => Promise<void>;
     getSecretHash: (clientId: string) => Promise<string | null>;
@@ -333,7 +333,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     },
     regenerateSecret: async (
       clientId: string,
-      regenerateOptions?: RegenerateHmacSecretOptions,
+      regenerateOptions?: RegenerateHmacSecretOptions
     ): Promise<HmacClientCredentialWithSecret> => {
       assertClientId(clientId);
       const existing = await credentialStore.getClientRecord(clientId);
@@ -379,7 +379,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       clientId: string,
       secret: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[],
+      allowedIps?: string[]
     ): Promise<void> => {
       assertClientId(clientId);
       const now = Date.now();
@@ -397,7 +397,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       clientId: string,
       secretHash: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[],
+      allowedIps?: string[]
     ): Promise<void> => {
       assertClientId(clientId);
       const now = Date.now();
@@ -453,7 +453,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
   const verifyHttpRequest = httpMiddlewareFactory();
 
   const handleInternalManagementRequest = async (
-    input: HmacInternalManagementRequestInput,
+    input: HmacInternalManagementRequestInput
   ): Promise<HmacInternalManagementRequestResult> => {
     if (!internalManagementRoute) {
       return {

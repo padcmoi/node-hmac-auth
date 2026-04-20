@@ -77,14 +77,14 @@ describe("HMAC auth - message", () => {
         clientId: "unknown_msg",
         message: { id: 42, event: "order.created" },
         signature: signed.signature,
-      }),
+      })
     ).rejects.toMatchObject({ code: "UNKNOWN_CLIENT", status: 401 });
 
     await expect(
       messageAuth.signMessage({
         clientId: "unknown_msg",
         message: { id: 42, event: "order.created" },
-      }),
+      })
     ).rejects.toMatchObject({ code: "CLIENT_NOT_FOUND", status: 404 });
   });
 

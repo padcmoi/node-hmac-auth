@@ -90,7 +90,7 @@ export interface InitializedHmacMessageAuth {
       clientId: string,
       secretHash: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[],
+      allowedIps?: string[]
     ) => Promise<void>;
     setAllowedIps: (clientId: string, allowedIps: string[]) => Promise<void>;
     getSecretHash: (clientId: string) => Promise<string | null>;

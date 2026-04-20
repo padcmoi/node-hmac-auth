@@ -71,7 +71,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headerRecord,
         rawBody: body,
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "REPLAYED_NONCE" });
   });
 
@@ -102,7 +102,7 @@ describe("HMAC auth - HTTP verify", () => {
         namespace: "tenant_b",
         maxSkewMs: 5000,
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "MISSING_CLIENT_ID", status: 401 });
   });
 
@@ -130,7 +130,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(unknownClientHeaders),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "UNKNOWN_CLIENT", status: 401 });
 
     const wrongSecretHeaders = buildHttpSignedHeaders({
@@ -149,7 +149,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(wrongSecretHeaders),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
   });
 
@@ -184,7 +184,7 @@ describe("HMAC auth - HTTP verify", () => {
         rawBody: "",
         now: timestamp,
         metadata: { source: "unit-test" },
-      }),
+      })
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
 
     expect(onBadSignature).toHaveBeenCalledTimes(1);
@@ -233,7 +233,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(wrongSecretHeaders),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
 
     expect(onBadSignature).toHaveBeenCalledTimes(1);
@@ -262,7 +262,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(headers),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "CLIENT_EXPIRED", status: 401 });
   });
 
@@ -286,7 +286,7 @@ describe("HMAC auth - HTTP verify", () => {
           secret: "secret_ip_lock",
           timestamp,
           nonce,
-        }),
+        })
       );
 
     const timestamp = Date.now();
@@ -300,7 +300,7 @@ describe("HMAC auth - HTTP verify", () => {
         rawBody: "",
         now: timestamp,
         metadata: { ip: "195.7.8.9" },
-      }),
+      })
     ).resolves.toMatchObject({ clientId: "ip_locked_client" });
 
     const headersAllowedCidr = makeHeaders("nonce_ip_allowed_cidr", timestamp + 1);
@@ -312,7 +312,7 @@ describe("HMAC auth - HTTP verify", () => {
         rawBody: "",
         now: timestamp + 1,
         metadata: { ip: "195.7.8.44" },
-      }),
+      })
     ).resolves.toMatchObject({ clientId: "ip_locked_client" });
 
     const headersDenied = makeHeaders("nonce_ip_denied", timestamp + 2);
@@ -324,7 +324,7 @@ describe("HMAC auth - HTTP verify", () => {
         rawBody: "",
         now: timestamp + 2,
         metadata: { ip: "8.8.8.8" },
-      }),
+      })
     ).rejects.toMatchObject({ code: "CLIENT_IP_NOT_ALLOWED", status: 403 });
   });
 
@@ -348,7 +348,7 @@ describe("HMAC auth - HTTP verify", () => {
         secret: "secret_ip_required",
         timestamp,
         nonce: "nonce_missing_ip",
-      }),
+      })
     );
 
     await expect(
@@ -358,7 +358,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers,
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "MISSING_CLIENT_IP", status: 403 });
   });
 
@@ -414,7 +414,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(headersWithToken),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).resolves.toMatchObject({ clientId: "app_a" });
 
     const headersWithoutToken = buildHttpSignedHeaders({
@@ -434,7 +434,7 @@ describe("HMAC auth - HTTP verify", () => {
         headers: headersToRecord(headersWithoutToken),
         rawBody: "",
         now: timestamp,
-      }),
+      })
     ).rejects.toMatchObject({ code: "BAD_SIGNATURE" });
   });
 });
