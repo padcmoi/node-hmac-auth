@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.2] - 2026-04-21
+
+- `fix(ci): use npm trusted publishing with GitHub Actions provenance`
+
 ## [0.5.1] - 2026-04-20
 
 - `test ci`
