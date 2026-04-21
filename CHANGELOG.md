@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.1] - 2026-04-20
+
+- `test ci`
+
 ## [0.5.0] - 2026-04-20
 
 - `feat(runtime): add createHmacRuntime factory with createSignedFetchFromClientId and signedFetchWithClientId helpers`
