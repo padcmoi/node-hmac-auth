@@ -1,0 +1,80 @@
+services:
+  redis:
+    image: redis:7-alpine
+    container_name: hmac-poc-redis
+    restart: unless-stopped
+    ports:
+      - "6399:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 3s
+      timeout: 2s
+      retries: 30
+
+  nest_source:
+    image: node:22-alpine
+    container_name: hmac-poc-nest-source
+    working_dir: /workspace/poc/nest-source
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../:/workspace
+      - nest_source_workspace_node_modules:/workspace/node_modules
+      - nest_source_app_node_modules:/workspace/poc/nest-source/node_modules
+    environment:
+      PORT: "3001"
+      REDIS_URL: "redis://redis:6379"
+      HMAC_NAMESPACE: "poc-nest-source"
+      HMAC_SECRET_TOKEN: "change_me"
+      HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
+    command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/nest-source && npm install && npm run start"
+
+  nest_target:
+    image: node:22-alpine
+    container_name: hmac-poc-nest-target
+    working_dir: /workspace/poc/nest-target
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../:/workspace
+      - nest_target_workspace_node_modules:/workspace/node_modules
+      - nest_target_app_node_modules:/workspace/poc/nest-target/node_modules
+    environment:
+      PORT: "3002"
+      REDIS_URL: "redis://redis:6379"
+      HMAC_NAMESPACE: "poc-nest-target"
+      HMAC_SECRET_TOKEN: "change_me"
+      HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
+    command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/nest-target && npm install && npm run start"
+
+  express_target:
+    image: node:22-alpine
+    container_name: hmac-poc-express-target
+    working_dir: /workspace/poc/express-target
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ../:/workspace
+      - express_target_workspace_node_modules:/workspace/node_modules
+      - express_target_app_node_modules:/workspace/poc/express-target/node_modules
+    environment:
+      PORT: "3003"
+      REDIS_URL: "redis://redis:6379"
+      HMAC_NAMESPACE: "poc-express-target"
+      HMAC_SECRET_TOKEN: "change_me"
+      HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
+    command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/express-target && npm install && npm run start"
+
+volumes:
+  nest_source_workspace_node_modules:
+  nest_source_app_node_modules:
+  nest_target_workspace_node_modules:
+  nest_target_app_node_modules:
+  express_target_workspace_node_modules:
+  express_target_app_node_modules:
