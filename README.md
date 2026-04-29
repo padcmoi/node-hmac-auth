@@ -13,6 +13,7 @@ Redis is mandatory.
 
 - Install, config, and usage guide (Express): [docs/express/README.md](./docs/express/README.md)
 - Install, config, and usage guide (NestJS): [docs/nestjs/README.md](./docs/nestjs/README.md)
+- Docker POC (Nest + Express + Redis, key propagation): [poc/README.md](./poc/README.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Compatibility

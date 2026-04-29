@@ -4,6 +4,15 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.3] - 2026-04-29
+
+- `docs(nestjs): clarify required body-parser setup for internal management route and add troubleshooting for clientId/auth failures`
+- `docs(nestjs): fix complete shared service propagation examples to pass required allowedIps on create/update`
+- `docs(readme): add Docker POC reference for Nest + Express + Redis key propagation`
+- `demo(poc): add minimal TypeScript docker-compose playground with one source config propagating to Nest and Express targets`
+- `demo(poc): add signed /secure/poc communication loop (every 5s) from Nest source to Nest/Express targets with request/response logging`
+- `demo(poc): add negative auth scenario with source-only clientId (not propagated) and expected 401/403 logs every 10s`
+
 ## [0.5.2] - 2026-04-21
 
 - `fix(ci): use npm trusted publishing with GitHub Actions provenance`

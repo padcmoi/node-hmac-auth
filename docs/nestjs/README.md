@@ -66,9 +66,13 @@ if (!existing) {
 }
 ```
 
-## 4) Nest App Setup (raw body + middleware)
+## 4) Nest App Setup (raw body + middleware order)
 
-Important: keep raw body enabled so HMAC verification uses exact request content.
+Important:
+
+- Keep raw body enabled so HMAC verification uses exact request content.
+- Keep JSON parsing enabled before HMAC middleware so internal management payloads are readable.
+- If JSON parsing is missing for `/api/internal/hmac`, `POST`/`PUT` can be refused with `FORBIDDEN: clientId is required`.
 
 ```ts
 import "reflect-metadata";
@@ -83,9 +87,19 @@ const app = await NestFactory.create<NestExpressApplication>(AppModule, {
 // If behind a reverse proxy/load balancer, keep client IP from X-Forwarded-For.
 app.set("trust proxy", true);
 
+// Required when bodyParser:false is used:
+// keeps JSON body parsing for routes such as /api/internal/hmac.
 app.useBodyParser("json");
+
 app.use("/secure", hmacAuth.verifyHttpRequest);
+app.use(hmacAuth.createInternalManagementMiddleware());
 ```
+
+Notes:
+
+- `bodyParser: false` + `app.useBodyParser("json")` is the recommended NestJS setup with this library.
+- Register `app.useBodyParser("json")` before attaching HMAC middleware.
+- If your app has custom parsers, ensure they do not bypass or replace JSON parsing for `/api/internal/hmac`.
 
 ## 5) Controller Example
 
@@ -217,6 +231,11 @@ Security behavior:
 
 - If at least one client already exists in Redis, route requires valid HMAC auth.
 - If no client exists yet, first credential bootstrap is accepted without HMAC auth.
+
+Troubleshooting:
+
+- `FORBIDDEN: clientId is required` usually means JSON payload is not parsed on the target API.
+- `FORBIDDEN: Internal HMAC management authentication failed` means the target API already has at least one client, so valid HMAC auth is required.
 
 ### Propagate to one or many APIs
 
@@ -408,6 +427,7 @@ export const interApi = {
         targets: opts.targetApis,
         clientId: opts.propagateClientId,
         secret: opts.plainSecret,
+        allowedIps: opts.allowedIps,
         apiFetch: await createSignedFetchFromClientId(fetchWithClientId),
       });
 
@@ -422,6 +442,7 @@ export const interApi = {
         targets: opts.targetApis,
         clientId: opts.propagateClientId,
         secret: opts.plainSecret,
+        allowedIps: opts.allowedIps,
         apiFetch: await createSignedFetchFromClientId(fetchWithClientId),
       });
 
