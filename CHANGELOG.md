@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.3] - 2026-04-29
+
+- `docs(nestjs): clarify required body-parser setup for internal management route and add troubleshooting for clientId/auth failures`
+- `docs(nestjs): fix complete shared service propagation examples to pass required allowedIps on create/update`
+
 ## [0.5.2] - 2026-04-21
 
 - `fix(ci): use npm trusted publishing with GitHub Actions provenance`
