@@ -4,6 +4,10 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.4] - 2026-05-15
+
+- `docs(nestjs-decorator): add §6 "Per-Route Protection with a NestJS Decorator" — Reflector + Guard wrapping runtime.hmacHttpMiddleware, with class/method whitelist semantics and method-over-class override. Renumbers former §6-§10 to §7-§11. Library code unchanged`
+
 ## [0.5.3] - 2026-04-29
 
 - `docs(nestjs): clarify required body-parser setup for internal management route and add troubleshooting for clientId/auth failures`

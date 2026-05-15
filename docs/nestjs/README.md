@@ -126,7 +126,100 @@ export class AppController {
 }
 ```
 
-## 6) Public Route Calling a Secure Peer Route
+## 6) Per-Route Protection with a NestJS Decorator
+
+§4 mounts `hmacAuth.verifyHttpRequest` on the `/secure` prefix — Express-style path protection that also works in NestJS. The NestJS-idiomatic surface is a controller/method decorator. The library stays framework-agnostic (it ships middleware only), so the decorator is ~30 lines of NestJS glue written once in your project on top of `createHmacRuntime(hmacAuth).hmacHttpMiddleware(...)`.
+
+```ts
+import {
+  applyDecorators,
+  type CanActivate,
+  type ExecutionContext,
+  Inject,
+  Injectable,
+  SetMetadata,
+  UseGuards,
+} from "@nestjs/common";
+import { Reflector } from "@nestjs/core";
+import type { HmacRuntime } from "@naskot/node-hmac-auth";
+
+export const HMAC_RUNTIME = Symbol("HMAC_RUNTIME");
+const HMAC_AUTH_CLIENTS_META = "hmac:auth:clients";
+
+@Injectable()
+export class HmacAuthGuard implements CanActivate {
+  constructor(
+    @Inject(HMAC_RUNTIME) private readonly runtime: HmacRuntime,
+    private readonly reflector: Reflector
+  ) {}
+
+  canActivate(context: ExecutionContext) {
+    const clientIds =
+      this.reflector.getAllAndOverride<string[]>(HMAC_AUTH_CLIENTS_META, [context.getHandler(), context.getClass()]) ?? [];
+    const middleware = this.runtime.hmacHttpMiddleware(...clientIds);
+    type Req = Parameters<typeof middleware>[0];
+    type Res = Parameters<typeof middleware>[1];
+    const req = context.switchToHttp().getRequest<Req>();
+    const res = context.switchToHttp().getResponse<Res>();
+    return new Promise<boolean>((resolve, reject) => {
+      void middleware(req, res, (err?: unknown) => {
+        if (!err) return resolve(true);
+        reject(err instanceof Error ? err : new Error(typeof err === "string" ? err : "HMAC middleware rejected the request"));
+      });
+    });
+  }
+}
+
+export const RequireAuthHmac = (...clientIds: string[]) =>
+  applyDecorators(SetMetadata(HMAC_AUTH_CLIENTS_META, clientIds), UseGuards(HmacAuthGuard));
+```
+
+Bind the runtime in your HMAC module so `HmacAuthGuard` can inject it:
+
+```ts
+import { Module } from "@nestjs/common";
+import { createHmacRuntime } from "@naskot/node-hmac-auth";
+import { HmacAuthGuard, HMAC_RUNTIME } from "./require-auth-hmac.decorator";
+
+@Module({
+  providers: [
+    { provide: HMAC_RUNTIME, useFactory: () => createHmacRuntime(hmacAuth) }, // hmacAuth from §2
+    HmacAuthGuard,
+  ],
+  exports: [HMAC_RUNTIME, HmacAuthGuard],
+})
+export class HmacModule {}
+```
+
+Apply on controllers — class-level for all routes, method-level to override a specific handler:
+
+```ts
+import { Controller, Get, Param, Post } from "@nestjs/common";
+import { RequireAuthHmac } from "./require-auth-hmac.decorator";
+
+@RequireAuthHmac("toto", "dudu")
+@Controller("admin/config-templates")
+export class AdminConfigTemplatesController {
+  @RequireAuthHmac("admin_console", "toto")
+  @Get(":alias")
+  detail(@Param("alias") alias: string) {}
+
+  @Post()
+  create() {}
+}
+```
+
+Notes:
+
+- `@RequireAuthHmac()` — any registered clientId passes (signature verification only).
+- `@RequireAuthHmac("admin_console")` — only `admin_console` passes (whitelist of one).
+- `@RequireAuthHmac("a", "b", "c")` — whitelist of multiple clientIds, any one passes.
+- Method-level annotation overrides class-level for that handler (`Reflector.getAllAndOverride([handler, class])`).
+- Routes without `@RequireAuthHmac` are not protected by this decorator — drop down to the §4 path-prefix middleware if you keep it.
+- The decorator delegates to `runtime.hmacHttpMiddleware(...clientIds)` and inherits the full check chain: signature, clock-skew window, nonce replay, optional `allowedIps`, optional clientId whitelist. Failures propagate as the `401` / `403` responses described in §8.
+- Express has no decorator surface — its equivalent stays the `/secure` path-prefix middleware (§4).
+
+## 7) Public Route Calling a Secure Peer Route
 
 Read signing material from Redis (`secretHash`) at call time, then use `createHttpSignedFetchClient`.
 
@@ -154,7 +247,7 @@ const response = await callPeer(`${PEER_BASE_URL}/secure/get?from=api_1`, {
 });
 ```
 
-## 7) Behavior Summary
+## 8) Behavior Summary
 
 - Missing `x-client-id` -> `401`
 - Unknown `clientId` -> `401`
@@ -173,7 +266,7 @@ Headers used by verifier:
 
 Note: `createExpressHttpMiddleware()` is available as explicit Express middleware naming.
 
-## 8) Sign and Verify Messages
+## 9) Sign and Verify Messages
 
 For async message transports (queues/events), use message helpers instead of HTTP helpers.
 
@@ -200,7 +293,7 @@ await hmacMessageAuth.verifyMessage({
 
 Message verification intentionally does not enforce timestamp skew checks or anti-replay.
 
-## 9) Internal HMAC Key Management Route (optional)
+## 10) Internal HMAC Key Management Route (optional)
 
 You can enable a dedicated internal route used to bootstrap and propagate credentials between APIs.
 
@@ -260,7 +353,7 @@ const results = await hmacAuth.propagateClientToApis({
 console.log(results);
 ```
 
-## 10) Complete Shared Service Example
+## 11) Complete Shared Service Example
 
 This service is framework-agnostic at code level
 
