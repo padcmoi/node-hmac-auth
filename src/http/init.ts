@@ -709,11 +709,16 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     const payload: Record<string, unknown> = {};
     if (operation !== "health") {
       payload.clientId = propagateOptions.clientId;
-      if (propagateOptions.secret !== undefined) {
-        payload.secret = propagateOptions.secret;
-      }
+      // Propagation always carries the locally-computed secretHash, never the
+      // plain secret. The target API stores the hash as-is via setSecretHash,
+      // so both sides end up with byte-identical hashes and signed requests
+      // verify even when the two APIs do not share the same HMAC_SECRET_TOKEN.
+      // An explicit secretHash from the caller always wins to preserve
+      // override use cases.
       if (propagateOptions.secretHash !== undefined) {
         payload.secretHash = propagateOptions.secretHash;
+      } else if (propagateOptions.secret !== undefined) {
+        payload.secretHash = hashClientSecret(propagateOptions.secret, secretToken);
       }
       if (propagateOptions.expiresAt !== undefined) {
         payload.expiresAt = normalizeExpiresAt(propagateOptions.expiresAt);

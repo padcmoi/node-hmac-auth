@@ -27,7 +27,8 @@ services:
       PORT: "3001"
       REDIS_URL: "redis://redis:6379"
       HMAC_NAMESPACE: "poc-nest-source"
-      HMAC_SECRET_TOKEN: "change_me"
+      # Distinct token per service to prove cross-token propagation via secretHash hotfix
+      HMAC_SECRET_TOKEN: "source_token_alpha"
       HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
     command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/nest-source && npm install && npm run start"
 
@@ -47,7 +48,8 @@ services:
       PORT: "3002"
       REDIS_URL: "redis://redis:6379"
       HMAC_NAMESPACE: "poc-nest-target"
-      HMAC_SECRET_TOKEN: "change_me"
+      # Distinct token per service to prove cross-token propagation via secretHash hotfix
+      HMAC_SECRET_TOKEN: "target_token_beta"
       HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
     command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/nest-target && npm install && npm run start"
 
@@ -67,7 +69,8 @@ services:
       PORT: "3003"
       REDIS_URL: "redis://redis:6379"
       HMAC_NAMESPACE: "poc-express-target"
-      HMAC_SECRET_TOKEN: "change_me"
+      # Distinct token per service to prove cross-token propagation via secretHash hotfix
+      HMAC_SECRET_TOKEN: "express_target_token_gamma"
       HMAC_INTERNAL_MANAGEMENT_ROUTE: "/api/internal/hmac"
     command: sh -lc "cd /workspace && npm install && npm run build && cd /workspace/poc/express-target && npm install && npm run start"
 
