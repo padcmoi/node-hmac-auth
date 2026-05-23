@@ -4,6 +4,12 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [0.5.5] - 2026-05-23
+
+- `fix(http): propagateClientToApis now sends the locally-computed secretHash (hashClientSecret(plainSecret, localSecretToken)) instead of the plain secret. The target API stores the value as-is via setSecretHash, so both sides end up with byte-identical secretHash records and signed requests verify across services that do NOT share the same HMAC_SECRET_TOKEN. Strictly scoped to propagation: clients.create / setSecret / setSecretHash / signMessage / verifyMessage / signedHttpFetch / verifyHttpSignature behaviors are unchanged. An explicit secretHash passed by the caller still wins to preserve advanced override use cases.`
+- `demo(poc): scale nest-source microservice.cfg to 10 propagated clientIds with diverse plain secrets (internal_sync, external_client, client_mobile, client_web, client_admin_console, client_partner_a, client_partner_b, client_ci_runner, client_analytics, client_billing) and assign DISTINCT HMAC_SECRET_TOKEN to each of the 3 services in docker-compose (source_token_alpha / target_token_beta / express_target_token_gamma) to prove the hotfix end-to-end.`
+- `demo(poc): add verifyAllPropagatedClients in nest-source that signs a /secure/poc fetch with EACH propagated clientId against both targets, logs a structured summary (ok=N/M + per-target HTTP status). Wired in main.ts at boot and on a 15s interval, producing 'cross-token verify summary ok=10/10' as live evidence.`
+
 ## [0.5.4] - 2026-05-15
 
 - `docs(nestjs-decorator): add §6 "Per-Route Protection with a NestJS Decorator" — Reflector + Guard wrapping runtime.hmacHttpMiddleware, with class/method whitelist semantics and method-over-class override. Renumbers former §6-§10 to §7-§11. Library code unchanged`

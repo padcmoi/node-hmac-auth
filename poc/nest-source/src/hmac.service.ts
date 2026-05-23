@@ -8,6 +8,7 @@ export type HmacSourceRuntime = {
   syncFromConfig: () => Promise<void>;
   sendSignedHelloToTargets: () => Promise<void>;
   sendRejectedSignedHelloToTargets: () => Promise<void>;
+  verifyAllPropagatedClients: () => Promise<void>;
   logHttpClients: () => Promise<void>;
   close: () => Promise<void>;
 };
@@ -231,6 +232,61 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
     });
   };
 
+  const verifyAllPropagatedClients = async (): Promise<void> => {
+    // For each propagated clientId, sign a secure fetch from source and assert
+    // both targets accept it (200) - proves cross-token verification works
+    // because source/targets have DIFFERENT HMAC_SECRET_TOKEN yet share the
+    // same secretHash (transported by the propagateClientToApis hotfix).
+    const propagatedClientIds = httpPropagationPlans.map((plan) => plan.clientId);
+    const summary: Array<{ clientId: string; nest_target: number; express_target: number; allOk: boolean }> = [];
+
+    for (const clientId of propagatedClientIds) {
+      const signerSecret = credentialMap.get(clientId);
+      if (!signerSecret) {
+        console.error(`[nest_source] cross-token verify skipped clientId=${clientId}: no local credential`);
+        continue;
+      }
+
+      const signer = hmacAuth.createHttpSignedFetchClient({
+        clientId,
+        secret: signerSecret,
+      });
+
+      const perTargetStatus: Record<string, number> = {};
+      for (const target of secureTargets) {
+        const url = `${target}/secure/poc`;
+        try {
+          const response = await signer(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              message: `cross-token verify clientId=${clientId}`,
+              source: "nest_source",
+              sentAt: new Date().toISOString(),
+            }),
+          });
+          await response.text();
+          perTargetStatus[target] = response.status;
+        } catch (error: unknown) {
+          perTargetStatus[target] = 0;
+          console.error(`[nest_source] verify clientId=${clientId} target=${target} fetch error:`, error);
+        }
+      }
+
+      const nest = perTargetStatus["http://nest_target:3002"] ?? 0;
+      const exp = perTargetStatus["http://express_target:3003"] ?? 0;
+      summary.push({
+        clientId,
+        nest_target: nest,
+        express_target: exp,
+        allOk: nest === 200 && exp === 200,
+      });
+    }
+
+    const okCount = summary.filter((row) => row.allOk).length;
+    console.log(`[nest_source] cross-token verify summary ok=${okCount}/${summary.length} details=${JSON.stringify(summary)}`);
+  };
+
   const logHttpClients = async (): Promise<void> => {
     const clientIds = await hmacAuth.clients.listClientIds();
     console.log(`[nest_source] http clients => ${clientIds.join(",") || "(none)"}`);
@@ -242,6 +298,7 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
     syncFromConfig,
     sendSignedHelloToTargets,
     sendRejectedSignedHelloToTargets,
+    verifyAllPropagatedClients,
     logHttpClients,
     close: async () => {
       await redis.quit();
