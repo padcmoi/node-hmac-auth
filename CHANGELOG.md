@@ -4,11 +4,16 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
-## [0.5.5] - 2026-05-23
+## [1.0.0] - 2026-05-23
 
-- `fix(http): propagateClientToApis now sends the locally-computed secretHash (hashClientSecret(plainSecret, localSecretToken)) instead of the plain secret. The target API stores the value as-is via setSecretHash, so both sides end up with byte-identical secretHash records and signed requests verify across services that do NOT share the same HMAC_SECRET_TOKEN. Strictly scoped to propagation: clients.create / setSecret / setSecretHash / signMessage / verifyMessage / signedHttpFetch / verifyHttpSignature behaviors are unchanged. An explicit secretHash passed by the caller still wins to preserve advanced override use cases.`
-- `demo(poc): scale nest-source microservice.cfg to 10 propagated clientIds with diverse plain secrets (internal_sync, external_client, client_mobile, client_web, client_admin_console, client_partner_a, client_partner_b, client_ci_runner, client_analytics, client_billing) and assign DISTINCT HMAC_SECRET_TOKEN to each of the 3 services in docker-compose (source_token_alpha / target_token_beta / express_target_token_gamma) to prove the hotfix end-to-end.`
-- `demo(poc): add verifyAllPropagatedClients in nest-source that signs a /secure/poc fetch with EACH propagated clientId against both targets, logs a structured summary (ok=N/M + per-target HTTP status). Wired in main.ts at boot and on a 15s interval, producing 'cross-token verify summary ok=10/10' as live evidence.`
+- `feat(http): propagateClientToApis sends the locally-computed secretHash instead of the plain secret; target stores it as-is via setSecretHash`
+- `feat(http): propagateClientToApis falls back to the local Redis credentialStore for secretHash when both secret and secretHash are omitted`
+- `feat(types): HmacHttpPropagationPlan.secret is now optional`
+- `test(propagation): 4 new vitest cases - hash on the wire, Redis fallback, missing-everything throw, caller secretHash priority`
+- `docs(release-notes): add docs/release-notes/1.0.0.md (before/after, resolution priority, FAQ on 3 acceptance scenarios)`
+- `docs(diagrams): add docs/diagrams/ with architecture.puml + seq-signed-fetch.puml + seq-propagation.puml + seq-message.puml`
+- `docs(architecture): refresh docs/architecture.md with per-file responsibilities, hashing/signing/propagation contracts, prepublishOnly gate`
+- `demo(poc): 11 propagated clientIds incl. client_via_redis_lookup (secret omitted), 3 distinct HMAC_SECRET_TOKEN, verifyAllPropagatedClients logs ok=11/11 at boot + every 15s`
 
 ## [0.5.4] - 2026-05-15
 

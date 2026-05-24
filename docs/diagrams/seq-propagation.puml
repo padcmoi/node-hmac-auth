@@ -1,0 +1,99 @@
+@startuml seq-propagation
+title Propagation v1.0.0 - hash on the wire + Redis fallback + bootstrap-then-auth
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Source app\n(boot / syncFromConfig)" as App
+participant "propagateClientToApis\n(http/init)" as Propagate
+database "Redis (source)" as RedisSrc
+participant "createHttpSignedFetchClient\n(signer)" as Signer
+participant "hashClientSecret\n(core/crypto)" as Hash
+collections "Target API\n/api/internal/hmac" as Target
+participant "handleInternalManagementRequest\n(http/init)" as Handler
+participant "verifyHttpSignature" as Verify
+database "Redis (target)" as RedisTgt
+
+== Source: resolve the secretHash to ship ==
+App -> Propagate : propagateClientToApis({\n  operation: "create",\n  clientId, secret? / secretHash?,\n  allowedIps, targets, apiFetch\n})
+alt secretHash explicit (priority 1)
+  Propagate -> Propagate : resolvedSecretHash = secretHash
+else secret + secretHash both omitted (priority 2)
+  Propagate -> RedisSrc : credentialStore.getClientRecord(clientId)
+  alt local record found
+    RedisSrc --> Propagate : {secretHash_local, ...}
+    Propagate -> Propagate : resolvedSecretHash = secretHash_local
+  else not found
+    RedisSrc --> Propagate : null
+    Propagate -> App : throw "secret or secretHash is required\n(or clientId must exist locally)"
+  end
+else secret plain provided (priority 3)
+  Propagate -> Hash : hashClientSecret(secret, localSecretToken)
+  Hash --> Propagate : secretHash (local hash)
+end
+note right of Propagate
+  payload.secretHash is set
+  payload.secret is NEVER sent
+end note
+
+== Source: sign the propagation request itself ==
+App -> Signer : pre-built signer (clientId = signerClientId,\nsecret = signerCredential.secretHash, secretIsHashed: true)
+note over Signer
+  Signing key for THE PROPAGATION CALL
+  is the local secretHash of the signer
+  (e.g. self_propagation_signer).
+end note
+
+== Target receives the POST ==
+Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: {clientId, secretHash, allowedIps, ...}
+Target -> Handler : handleInternalManagementRequest(input)
+Handler -> RedisTgt : clients.listClientIds()
+RedisTgt --> Handler : knownClients
+alt knownClients.length == 0  (bootstrap mode)
+  note over Handler
+    First propagated client lands here.
+    No HMAC verification - the route
+    is "bootstrap-then-auth".
+  end note
+else knownClients.length > 0  (auth required)
+  Handler -> Verify : verifyHttpSignature(...)
+  Verify -> RedisTgt : credentialStore.getClientRecord(callerClientId)
+  RedisTgt --> Verify : record or null
+  alt signer unknown / hash mismatch / IP filter
+    Verify -> Handler : throw HmacAuthError
+    Handler -> Target : 403 "Internal HMAC management\nauthentication failed"
+    Target --> Propagate : 403 result\nresult.accepted = false
+  end
+end
+
+Handler -> RedisTgt : clients.get(payload.clientId)
+alt clientId already exists
+  RedisTgt --> Handler : record
+  Handler -> Target : 403 "Client already exists"
+  Target --> Propagate : 403 result\n(treat as success when retrying)
+else not yet present
+  RedisTgt --> Handler : null
+  Handler -> RedisTgt : clients.setSecretHash(clientId, payload.secretHash,\nexpiresAt, allowedIps)
+  note right of RedisTgt
+    Hash stored AS-IS.
+    No re-hash with the target's
+    HMAC_SECRET_TOKEN.
+    Source and target Redis now
+    hold byte-identical hashes.
+  end note
+  RedisTgt --> Handler : stored
+  Handler -> Target : 201 "create accepted"
+  Target --> Propagate : 201 result\nresult.accepted = true
+end
+
+Propagate --> App : results[] {target, url, status, accepted, body, error?}
+
+== Downstream effect: signed requests now work cross-token ==
+note over RedisSrc, RedisTgt
+  Subsequent signed HTTP calls from source to target succeed:
+  both verifyHttpSignature compute HMAC(secretHash, payload)
+  with the same secretHash, even if source and target
+  do NOT share the same HMAC_SECRET_TOKEN.
+end note
+
+@enduml

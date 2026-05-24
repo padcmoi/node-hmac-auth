@@ -246,6 +246,8 @@ const results = await hmacAuth.propagateClientToApis({
 console.log(results);
 ```
 
+Behavior changes around `propagateClientToApis` are documented in the dedicated release notes: [docs/release-notes/1.0.0.md](../release-notes/1.0.0.md).
+
 ## 10) Complete Shared Service Example
 
 This service is framework-agnostic at code level

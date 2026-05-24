@@ -696,10 +696,28 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     const operation = propagateOptions.operation;
     const method = operation === "health" ? "GET" : operation === "create" ? "POST" : operation === "update" ? "PUT" : "DELETE";
 
+    // Local Redis fallback: when neither `secret` nor `secretHash` is provided
+    // for create/update propagation, look up the clientId in the local
+    // credentialStore and reuse its stored secretHash. This lets a caller
+    // declare a clientId only once in `internalCredentials[]` and reference
+    // it from `propagationPlans[]` without duplicating the plain secret.
+    let resolvedSecretHash = propagateOptions.secretHash;
+    if (
+      operation !== "health" &&
+      operation !== "delete" &&
+      resolvedSecretHash === undefined &&
+      propagateOptions.secret === undefined
+    ) {
+      const localRecord = await credentialStore.getClientRecord(propagateOptions.clientId ?? "");
+      if (localRecord) {
+        resolvedSecretHash = localRecord.secretHash;
+      }
+    }
+
     if (operation !== "health") {
       assertClientId(propagateOptions.clientId ?? "");
-      if (operation !== "delete" && !propagateOptions.secret && !propagateOptions.secretHash) {
-        throw new Error("secret or secretHash is required for create/update propagation");
+      if (operation !== "delete" && !propagateOptions.secret && !resolvedSecretHash) {
+        throw new Error("secret or secretHash is required for create/update propagation (or clientId must exist locally)");
       }
       if ((operation === "create" || operation === "update") && !Array.isArray(propagateOptions.allowedIps)) {
         throw new Error("allowedIps array is required for create/update propagation");
@@ -713,10 +731,10 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       // plain secret. The target API stores the hash as-is via setSecretHash,
       // so both sides end up with byte-identical hashes and signed requests
       // verify even when the two APIs do not share the same HMAC_SECRET_TOKEN.
-      // An explicit secretHash from the caller always wins to preserve
-      // override use cases.
-      if (propagateOptions.secretHash !== undefined) {
-        payload.secretHash = propagateOptions.secretHash;
+      // Priority: explicit caller secretHash > local Redis lookup > hash of
+      // the caller-provided plain secret.
+      if (resolvedSecretHash !== undefined) {
+        payload.secretHash = resolvedSecretHash;
       } else if (propagateOptions.secret !== undefined) {
         payload.secretHash = hashClientSecret(propagateOptions.secret, secretToken);
       }

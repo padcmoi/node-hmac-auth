@@ -7,6 +7,10 @@ import type { MicroserviceConfigTemplate } from "./microservice-config.types";
 // setSecretHash, so every clientId is verifiable cross-token end-to-end.
 const TARGETS = ["http://nest_target:3002", "http://express_target:3003"];
 
+// `usesLocalRedisLookup: true` exercises the v0.6.0 fallback: the
+// propagationPlans entry will be emitted WITHOUT a `secret` field; the lib
+// resolves the secretHash from the local Redis (where it landed thanks to the
+// matching internalCredentials entry that was synced earlier in syncFromConfig).
 const PROPAGATED_CLIENTS = [
   { clientId: "internal_sync", secret: "superSecret" },
   { clientId: "external_client", secret: "superSharedSecret" },
@@ -18,6 +22,10 @@ const PROPAGATED_CLIENTS = [
   { clientId: "client_ci_runner", secret: "ciRunnerSecret-DD2228" },
   { clientId: "client_analytics", secret: "analyticsSecret-ANA-001" },
   { clientId: "client_billing", secret: "billingSecret-INV-2026" },
+  // v0.6.0 demo: declared in internalCredentials (with a plain secret), but
+  // the propagation plan below omits its `secret` and relies on the lib's
+  // Redis fallback to fetch the secretHash already stored locally.
+  { clientId: "client_via_redis_lookup", secret: "redisLookupSecret-XYZ-606", usesLocalRedisLookup: true },
 ];
 
 export const microserviceConfig: MicroserviceConfigTemplate = {
@@ -42,13 +50,21 @@ export const microserviceConfig: MicroserviceConfigTemplate = {
           allowedIps: ["0.0.0.0/0", "::/0"],
         },
       ],
-      propagationPlans: PROPAGATED_CLIENTS.map((entry) => ({
-        signerClientId: "internal_sync",
-        targets: TARGETS,
-        clientId: entry.clientId,
-        secret: entry.secret,
-        allowedIps: ["0.0.0.0/0", "::/0"],
-      })),
+      propagationPlans: PROPAGATED_CLIENTS.map((entry) => {
+        const base = {
+          signerClientId: "internal_sync",
+          targets: TARGETS,
+          clientId: entry.clientId,
+          allowedIps: ["0.0.0.0/0", "::/0"],
+        };
+        // Auto-lookup branch: deliberately omit `secret` so the lib falls back
+        // to the local Redis credentialStore (where this clientId was synced
+        // from internalCredentials moments earlier).
+        if (entry.usesLocalRedisLookup) {
+          return base;
+        }
+        return { ...base, secret: entry.secret };
+      }),
     },
   },
 };

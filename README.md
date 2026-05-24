@@ -113,6 +113,10 @@ Security rule:
 - If at least one client exists, route requires valid HMAC auth.
 - If no client exists yet, bootstrap creation is allowed (first key).
 
+## Release notes
+
+- 1.0.0 — propagation: hash-on-the-wire + Redis fallback ([docs/release-notes/1.0.0.md](./docs/release-notes/1.0.0.md))
+
 ### Message helpers
 
 - `signMessage(input)`: low-level message signer (with explicit secret)

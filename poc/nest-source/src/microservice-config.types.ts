@@ -8,7 +8,11 @@ export type HmacHttpPropagationPlan = {
   signerClientId: string;
   targets: string[];
   clientId: string;
-  secret: string;
+  // `secret` becomes optional in 0.6.0: when omitted, the lib falls back to
+  // the local Redis credentialStore and reuses the existing secretHash for
+  // `clientId`, provided the same clientId is already declared in
+  // `internalCredentials`.
+  secret?: string;
   allowedIps: string[];
 };
 

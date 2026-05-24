@@ -1,6 +1,6 @@
 {
   "name": "@naskot/node-hmac-auth",
-  "version": "0.5.5",
+  "version": "1.0.0",
   "description": "Simple and reusable HMAC auth for Node.js APIs and microservices.",
   "repository": {
     "type": "git",
