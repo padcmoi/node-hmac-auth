@@ -4,6 +4,11 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [1.1.1] - 2026-05-24
+
+- `fix(types): re-export HmacPropagateTargetStore and HmacMessageAuthBridge from the package index (omitted in 1.1.0, forced consumers to inline the literal "http" | "message")`
+- `docs(release-notes): add docs/release-notes/1.1.1.md`
+
 ## [1.1.0] - 2026-05-24
 
 - `feat(http): propagateClientToApis accepts targetStore?: "http" | "message" (default "http")`

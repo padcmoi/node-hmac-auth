@@ -115,6 +115,7 @@ Security rule:
 
 ## Release notes
 
+- 1.1.1 — re-export `HmacPropagateTargetStore` + `HmacMessageAuthBridge` from the index (fix omitted in 1.1.0) ([docs/release-notes/1.1.1.md](./docs/release-notes/1.1.1.md))
 - 1.1.0 — propagation can also target the message credential store ([docs/release-notes/1.1.0.md](./docs/release-notes/1.1.0.md))
 - 1.0.0 — propagation: hash-on-the-wire + Redis fallback ([docs/release-notes/1.0.0.md](./docs/release-notes/1.0.0.md))
 

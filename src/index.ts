@@ -34,6 +34,8 @@ export type {
   HmacInternalManagementRequestInput,
   HmacInternalManagementRequestResult,
   HmacInternalPropagationOperation,
+  HmacMessageAuthBridge,
+  HmacPropagateTargetStore,
   InitializeHmacHttpAuthOptions,
   InitializeHmacMessageAuthOptions,
   OnBadHttpSignature,
