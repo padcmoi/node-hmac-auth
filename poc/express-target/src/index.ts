@@ -40,13 +40,42 @@ async function bootstrap(): Promise<void> {
     });
   });
 
+  // v1.1.0 POC: verify a message signed by the source's message store. Proves
+  // the propagated secretHash on this target matches the source's hash byte-for-byte.
+  app.post("/message/verify", async (req, res) => {
+    const body = (req.body ?? {}) as { clientId?: string; message?: unknown; signature?: string };
+    if (!body.clientId || !body.signature || body.message === undefined) {
+      res.status(400).json({ ok: false, error: "BAD_REQUEST", message: "clientId, message and signature are required" });
+      return;
+    }
+    try {
+      const verified = await hmac.hmacMessageAuth.verifyMessage({
+        clientId: body.clientId,
+        message: body.message,
+        signature: body.signature,
+      });
+      res.status(200).json({
+        ok: true,
+        receiver: "express_target",
+        verifiedClientId: verified.clientId,
+        messageHash: verified.messageHash,
+      });
+    } catch (error) {
+      const code = error instanceof Error && "code" in error ? (error as any).code : "VERIFY_FAILED";
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(200).json({ ok: false, receiver: "express_target", error: code, message });
+    }
+  });
+
   app.listen(port, "0.0.0.0", async () => {
     console.log(`[express_target] listening on :${port}`);
     await hmac.logHttpClients();
+    await hmac.logMessageClients();
   });
 
   setInterval(() => {
     void hmac.logHttpClients();
+    void hmac.logMessageClients();
   }, 10000);
 }
 

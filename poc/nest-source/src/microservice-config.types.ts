@@ -14,6 +14,10 @@ export type HmacHttpPropagationPlan = {
   // `internalCredentials`.
   secret?: string;
   allowedIps: string[];
+  // v1.1.0: select the target credential store on the remote. Defaults to
+  // "http" (1.0.x behavior). Set to "message" to write the propagated client
+  // into the remote message store via the same internal-management route.
+  targetStore?: "http" | "message";
 };
 
 export type HmacMessageCredentialPlan = {

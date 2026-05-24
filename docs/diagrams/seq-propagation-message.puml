@@ -1,0 +1,104 @@
+@startuml seq-propagation-message
+title Propagation v1.1.0 - targetStore="message" (message-store cross-token propagation)
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Source app" as App
+participant "propagateClientToApis\n(http/init)" as Propagate
+database "Redis source\n{ns}:clients (HTTP)" as RedisSrcHttp
+database "Redis source\n{ns}-messages:clients" as RedisSrcMsg
+participant "HTTP signer\n(self_propagation_signer)" as Signer
+participant "hashClientSecret\n(core/crypto)" as Hash
+collections "Target API\n/api/internal/hmac" as Target
+participant "handleInternalManagementRequest\n(http/init)" as Handler
+participant "verifyHttpSignature" as Verify
+database "Redis target\n{ns}:clients (HTTP)" as RedisTgtHttp
+database "Redis target\n{ns}-messages:clients" as RedisTgtMsg
+
+== Source: resolve the secretHash to ship ==
+App -> Propagate : propagateClientToApis({\n  operation: "create",\n  clientId: "msg_amqp_orders",\n  secret? / secretHash?,\n  allowedIps,\n  targets,\n  apiFetch: signer,\n  targetStore: "message"\n})
+
+alt secretHash explicit (priority 1)
+  Propagate -> Propagate : resolvedSecretHash = caller.secretHash
+else secret + secretHash both omitted (priority 2)
+  Propagate -> RedisSrcMsg : messageAuth.clients.get(clientId)
+  alt local record found in message store
+    RedisSrcMsg --> Propagate : { secretHash_msg }
+    Propagate -> Propagate : resolvedSecretHash = secretHash_msg
+  else not found
+    Propagate -> App : throw "secret or secretHash required"
+  end
+else secret plain provided (priority 3)
+  Propagate -> Hash : hashClientSecret(secret, localSecretToken)
+  Hash --> Propagate : secretHash (local hash)
+end
+
+note right of Propagate
+  Payload built:
+  { clientId, secretHash, allowedIps, kind: "message" }
+
+  payload.secret is NEVER set.
+  payload.kind is "message" (new in 1.1.0).
+end note
+
+== Source: sign the propagation request itself (HTTP credential) ==
+Propagate -> Signer : reuse the standard HTTP signer
+note over Signer
+  The propagation POST is always an HTTP request
+  signed by an HTTP credential the target trusts.
+  targetStore="message" affects ONLY the routed write,
+  not how the request itself is authenticated.
+end note
+
+== Target receives the POST ==
+Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: { clientId, secretHash, allowedIps, kind: "message" }
+
+Target -> Handler : handleInternalManagementRequest(input)
+Handler -> RedisTgtHttp : clients.listClientIds()
+RedisTgtHttp --> Handler : knownClients
+alt knownClients.length > 0 (auth required)
+  Handler -> Verify : verifyHttpSignature(...)
+  Verify -> RedisTgtHttp : credentialStore.getClientRecord(signerClientId)
+  RedisTgtHttp --> Verify : record (= source's local hash)
+  Verify --> Handler : VerifiedHttpRequest
+end
+
+Handler -> Handler : read payload.kind == "message"
+
+alt messageAuth NOT configured on target
+  Handler -> Target : 403 "Message store not configured"
+  Target --> Propagate : 403 result
+end
+
+Handler -> RedisTgtMsg : messageAuth.clients.get(payload.clientId)
+alt clientId already exists in message store
+  RedisTgtMsg --> Handler : record
+  Handler -> Target : 403 "Client already exists"
+  Target --> Propagate : 403 result\n(treat as success on retry)
+else not yet present
+  RedisTgtMsg --> Handler : null
+  Handler -> RedisTgtMsg : messageAuth.clients.setSecretHash(\n  clientId, payload.secretHash, expiresAt, allowedIps\n)
+  note right of RedisTgtMsg
+    Stored AS-IS. No re-hash with the target's
+    HMAC_SECRET_TOKEN. Message store on source and
+    target now hold byte-identical secretHash records.
+  end note
+  RedisTgtMsg --> Handler : stored
+  Handler -> Target : 201 { ok, operation: "create", clientId, kind: "message" }
+  Target --> Propagate : 201 result\nresult.accepted = true
+end
+
+Propagate --> App : results[]
+
+== Downstream effect: signMessage / verifyMessage cross-token ==
+note over RedisSrcMsg, RedisTgtMsg
+  hmacMessageAuth.signMessage on source and
+  hmacMessageAuth.verifyMessage on target both
+  compute hmac-sha256(secretHash, payload). The
+  secretHash is byte-identical, so signatures
+  verify even when source and target run with
+  different HMAC_SECRET_TOKEN.
+end note
+
+@enduml

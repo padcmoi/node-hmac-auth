@@ -23,12 +23,15 @@ async function bootstrap(): Promise<void> {
 
   await hmac.syncFromConfig();
   await hmac.logHttpClients();
+  await hmac.logMessageClients();
   await hmac.sendSignedHelloToTargets();
   await hmac.sendRejectedSignedHelloToTargets();
   await hmac.verifyAllPropagatedClients();
+  await hmac.verifyAllPropagatedMessageClients();
 
   setInterval(() => {
     void hmac.logHttpClients();
+    void hmac.logMessageClients();
   }, 10000);
 
   setInterval(() => {
@@ -41,6 +44,10 @@ async function bootstrap(): Promise<void> {
 
   setInterval(() => {
     void hmac.verifyAllPropagatedClients();
+  }, 15000);
+
+  setInterval(() => {
+    void hmac.verifyAllPropagatedMessageClients();
   }, 15000);
 }
 

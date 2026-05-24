@@ -353,7 +353,10 @@ const results = await hmacAuth.propagateClientToApis({
 console.log(results);
 ```
 
-Behavior changes around `propagateClientToApis` are documented in the dedicated release notes: [docs/release-notes/1.0.0.md](../release-notes/1.0.0.md).
+Behavior changes around `propagateClientToApis` are documented in the dedicated release notes:
+
+- 1.1.0 — propagation can also target the message credential store via `targetStore: "message"` (optional `messageAuth` bridge in `initializeHmacHttpAuth`). See [docs/release-notes/1.1.0.md](../release-notes/1.1.0.md).
+- 1.0.0 — propagation transports the `secretHash` on the wire + Redis fallback when `secret`/`secretHash` are omitted. See [docs/release-notes/1.0.0.md](../release-notes/1.0.0.md).
 
 ## 11) Complete Shared Service Example
 

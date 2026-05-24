@@ -28,11 +28,20 @@ const PROPAGATED_CLIENTS = [
   { clientId: "client_via_redis_lookup", secret: "redisLookupSecret-XYZ-606", usesLocalRedisLookup: true },
 ];
 
+// v1.1.0: message clients to propagate over HTTP via targetStore="message".
+// Each one is declared locally in hmacMessage.credentials (so syncFromConfig
+// creates it in the source message store) AND in propagationPlans below with
+// targetStore: "message" so it lands on each remote's message store too.
+const MESSAGE_CLIENTS = [
+  { clientId: "msg_amqp_orders", secret: "msgOrdersSecret-MO-001" },
+  { clientId: "msg_amqp_billing", secret: "msgBillingSecret-MB-001" },
+];
+
 export const microserviceConfig: MicroserviceConfigTemplate = {
   version: "1",
   hmac_config: {
     hmacMessage: {
-      credentials: [{ clientId: "internal_sync", secret: "superSecret" }],
+      credentials: [{ clientId: "internal_sync", secret: "superSecret" }, ...MESSAGE_CLIENTS],
     },
     hmacHttp: {
       internalCredentials: [
@@ -50,21 +59,35 @@ export const microserviceConfig: MicroserviceConfigTemplate = {
           allowedIps: ["0.0.0.0/0", "::/0"],
         },
       ],
-      propagationPlans: PROPAGATED_CLIENTS.map((entry) => {
-        const base = {
+      propagationPlans: [
+        ...PROPAGATED_CLIENTS.map((entry) => {
+          const base = {
+            signerClientId: "internal_sync",
+            targets: TARGETS,
+            clientId: entry.clientId,
+            allowedIps: ["0.0.0.0/0", "::/0"],
+          };
+          // Auto-lookup branch: deliberately omit `secret` so the lib falls
+          // back to the local Redis credentialStore (where this clientId was
+          // synced from internalCredentials moments earlier).
+          if (entry.usesLocalRedisLookup) {
+            return base;
+          }
+          return { ...base, secret: entry.secret };
+        }),
+        // v1.1.0: message-store propagation. The signer stays an HTTP client
+        // (the propagation POST itself must be authenticable by the target's
+        // verifyHttpSignature). The `targetStore: "message"` flag tells the
+        // remote to write the propagated client into its message store.
+        ...MESSAGE_CLIENTS.map((entry) => ({
           signerClientId: "internal_sync",
           targets: TARGETS,
           clientId: entry.clientId,
+          secret: entry.secret,
           allowedIps: ["0.0.0.0/0", "::/0"],
-        };
-        // Auto-lookup branch: deliberately omit `secret` so the lib falls back
-        // to the local Redis credentialStore (where this clientId was synced
-        // from internalCredentials moments earlier).
-        if (entry.usesLocalRedisLookup) {
-          return base;
-        }
-        return { ...base, secret: entry.secret };
-      }),
+          targetStore: "message" as const,
+        })),
+      ],
     },
   },
 };

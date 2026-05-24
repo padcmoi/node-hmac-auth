@@ -55,6 +55,36 @@ export interface InitializeHmacHttpAuthOptions {
   secretToken?: string;
   onBadSignature?: OnBadHttpSignature;
   internalManagementRoute?: string;
+  /**
+   * Optional bridge to the message credential store, used by `propagateClientToApis`
+   * when `targetStore: "message"` is requested. Required on both sides:
+   *   - source: enables the local Redis fallback to read the message-store secretHash.
+   *   - target: lets `handleInternalManagementRequest` route `kind: "message"`
+   *             payloads to the message store instead of the HTTP store.
+   * When omitted, the lib behaves exactly like 1.0.x (HTTP-only propagation).
+   */
+  messageAuth?: HmacMessageAuthBridge;
+}
+
+/**
+ * Minimal view of an InitializedHmacMessageAuth used as a bridge by
+ * initializeHmacHttpAuth. Kept structural to avoid an import cycle: any object
+ * exposing this shape works (typically the result of initializeHmacMessageAuth).
+ */
+export interface HmacMessageAuthBridge {
+  readonly namespace: string;
+  clients: {
+    get: (clientId: string) => Promise<HmacClientCredential | null>;
+    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null, allowedIps?: string[]) => Promise<void>;
+    setSecretHash: (
+      clientId: string,
+      secretHash: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[]
+    ) => Promise<void>;
+    delete: (clientId: string) => Promise<void>;
+    listClientIds: () => Promise<string[]>;
+  };
 }
 
 export interface InitializeHmacMessageAuthOptions {
@@ -151,6 +181,16 @@ export interface HmacInternalManagementRequestResult {
 
 export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete";
 
+/**
+ * Which credential store the propagation targets on the remote API.
+ *   - "http"    (default): write to the HTTP credential store (same as 1.0.x)
+ *   - "message"          : write to the message credential store via the same
+ *                          internal-management route. Requires `messageAuth`
+ *                          to be passed to `initializeHmacHttpAuth` on BOTH
+ *                          source (Redis fallback) and target (handler write).
+ */
+export type HmacPropagateTargetStore = "http" | "message";
+
 export type PropagateApiFetch =
   | ((url: string, options?: SignedHttpFetchClientCallOptions) => Promise<Response>)
   | ((url: string, options: RequestInit) => Promise<Response>);
@@ -165,6 +205,8 @@ export interface PropagateHmacClientOptions {
   secretHash?: string;
   expiresAt?: number | Date | null;
   allowedIps?: string[];
+  /** Defaults to "http" - 1.0.x behavior. */
+  targetStore?: HmacPropagateTargetStore;
 }
 
 export interface PropagateHmacClientResult {

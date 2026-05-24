@@ -8,7 +8,7 @@ async function bootstrap(): Promise<void> {
   const port = Number(process.env.PORT ?? 3002);
   const hmac = await createHmacTargetRuntime("nest_target");
 
-  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+  const app = await NestFactory.create<NestExpressApplication>(AppModule.forRoot(hmac.hmacMessageAuth), {
     bodyParser: false,
     rawBody: true,
   });
@@ -21,9 +21,11 @@ async function bootstrap(): Promise<void> {
   await app.listen(port, "0.0.0.0");
   console.log(`[nest_target] listening on :${port}`);
   await hmac.logHttpClients();
+  await hmac.logMessageClients();
 
   setInterval(() => {
     void hmac.logHttpClients();
+    void hmac.logMessageClients();
   }, 10000);
 }
 

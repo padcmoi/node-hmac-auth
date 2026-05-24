@@ -4,6 +4,16 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [1.1.0] - 2026-05-24
+
+- `feat(http): propagateClientToApis accepts targetStore?: "http" | "message" (default "http")`
+- `feat(http): initializeHmacHttpAuth accepts optional messageAuth bridge`
+- `feat(http): handleInternalManagementRequest dispatches on payload.kind to the message store when "message" (403 if messageAuth absent)`
+- `test(propagation): 4 new vitest cases - source ships kind=message, target writes to messageAuth, source-side throws without messageAuth, target-side 403 without messageAuth`
+- `docs(release-notes): add docs/release-notes/1.1.0.md`
+- `docs(diagrams): add seq-propagation-message.puml + update architecture.puml with the messageAuth bridge edge`
+- `demo(poc): targets instantiate messageAuth + expose /message/verify; nest-source propagates 2 message clients (msg_amqp_orders, msg_amqp_billing) with targetStore="message"; verifyAllPropagatedMessageClients logs cross-token message verify summary ok=2/2 alongside the HTTP ok=11/11`
+
 ## [1.0.0] - 2026-05-23
 
 - `feat(http): propagateClientToApis sends the locally-computed secretHash instead of the plain secret; target stores it as-is via setSecretHash`
