@@ -1,0 +1,73 @@
+@startuml seq-signed-fetch
+title Signed HTTP request - end-to-end (sign + verify)
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Caller code" as App
+participant "createHttpSignedFetchClient\n(client/signed-fetch.ts)" as SignedFetch
+participant "buildHttpSignedHeaders" as BuildHeaders
+participant "signRequest\n(core/crypto)" as SignReq
+database "Redis (source)" as RedisSrc
+collections "Target API\n/secure/*" as Target
+participant "verifyHttpRequest\nmiddleware (express)" as Mid
+participant "verifyHttpSignature\n(http/server/verify)" as Verify
+database "Redis (target)" as RedisTgt
+
+== Source side: build signed request ==
+App -> SignedFetch : signer = createHttpSignedFetchClient({\n  clientId, secret OR secretHash, secretIsHashed\n})
+note right
+  If `secret` (plain) is passed,
+  it is hashed locally with
+  hashClientSecret(secret, hashToken)
+  ONCE here and reused for every call.
+end note
+App -> SignedFetch : signer(url, {method, body, ...})
+SignedFetch -> BuildHeaders : timestamp = now, nonce = random(),\nbodyForSignature = serialized body
+BuildHeaders -> SignReq : signRequest({method, path, timestamp, nonce, body, secret = signingSecret})
+SignReq --> BuildHeaders : signature (hmac-sha256 hex)
+BuildHeaders --> SignedFetch : Headers{x-client-id, x-timestamp, x-nonce, x-signature}
+SignedFetch -> Target : fetch(url, {method, headers, body})
+
+== Target side: verify ==
+Target -> Mid : incoming request
+Mid -> Verify : verifyHttpSignature({method, path, headers, rawBody, redis, ...})
+Verify -> Verify : require x-client-id, x-signature, x-timestamp, x-nonce
+Verify -> Verify : abs(now - timestamp) <= maxSkewMs ?\n(else TIMESTAMP_SKEW)
+Verify -> RedisTgt : credentialStore.getClientRecord(clientId)
+RedisTgt --> Verify : {secretHash, allowedIps, expiresAt, ...}\nor null
+alt unknown clientId
+  Verify -> Mid : throw UNKNOWN_CLIENT (401)
+  Mid -> Target : 401 JSON
+else expired
+  Verify -> Mid : throw CLIENT_EXPIRED (401)
+else allowedIps non-empty
+  Verify -> Verify : extractClientIp(metadata.ip / forwardedFor / ...)
+  Verify -> Verify : isClientIpAllowed ?
+  alt IP not allowed
+    Verify -> Mid : throw CLIENT_IP_NOT_ALLOWED (403)
+  end
+end
+Verify -> SignReq : expectedSignature = signRequest({...same payload, secret = stored secretHash})
+SignReq --> Verify : expectedSignature
+Verify -> Verify : safeEqualHex(expected, received) ?
+alt mismatch
+  Verify -> Mid : onBadSignature(event)\nthrow BAD_SIGNATURE (401)
+  Mid -> Target : 401 JSON
+else match
+  Verify -> RedisTgt : nonceStore.consume(clientId:nonce:timestamp, ttl)
+  RedisTgt --> Verify : true (NX) OR false (replay)
+  alt replay
+    Verify -> Mid : throw REPLAYED_NONCE (401)
+  else
+    Verify --> Mid : VerifiedHttpRequest{clientId, timestamp, nonce, signature}
+    Mid -> Target : req.hmacAuth = verified ; next()
+    Target --> Mid : 200 OK body
+    Mid --> Target : forward response
+  end
+end
+
+Target --> SignedFetch : HTTP response
+SignedFetch --> App : Response
+
+@enduml

@@ -1,0 +1,97 @@
+@startuml architecture
+title @naskot/node-hmac-auth - Component overview
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+left to right direction
+
+package "Consumer App (Express / NestJS / framework-agnostic)" as App {
+  component "HTTP routes\n(secure + public)" as Routes
+  component "Outbound calls\n(service-to-service)" as Outbound
+  component "AMQP / queue\nproducer + consumer" as Messaging
+  component "Boot / config\n(microservice.cfg, syncFromConfig)" as Boot
+}
+
+package "@naskot/node-hmac-auth" as Lib {
+  package "core" as Core {
+    component "crypto\n(signRequest,\nhashClientSecret,\nbuildSigningPayload)" as Crypto
+    component "ip\n(CIDR parsing,\nallowedIps check)" as Ip
+    component "errors\n(HmacAuthError + codes)" as Errors
+    component "utils + types" as Utils
+  }
+
+  package "http" as Http {
+    package "server" as HttpServer {
+      component "verify\n(verifyHttpSignature)" as Verify
+      component "express middleware\n(verifyHttpRequest)" as ExpressMid
+    }
+    package "client" as HttpClient {
+      component "signed-fetch\n(buildHttpSignedHeaders,\nsignedHttpFetch,\ncreateHttpSignedFetchClient)" as SignedFetch
+    }
+    component "init\n(initializeHmacHttpAuth\n+ clients CRUD\n+ internal management\n+ propagateClientToApis)" as HttpInit
+  }
+
+  package "message" as Message {
+    component "signature\n(signMessage / verifyMessage)" as MsgSig
+    component "init\n(initializeHmacMessageAuth\n+ clients CRUD)" as MsgInit
+  }
+
+  package "runtime" as Runtime {
+    component "create-runtime\n(createSignedFetchFromClientId,\nsignedFetchWithClientId,\nhmacHttpMiddleware)" as RuntimeMod
+  }
+
+  package "stores" as Stores {
+    component "redis\n(RedisCredentialStore,\nRedisNonceStore)" as RedisStore
+  }
+}
+
+database "Redis" as Redis {
+  collections "{namespace}:clients\n(hash: clientId -> record)" as RedisClients
+  collections "{namespace}:nonce:*\n(anti-replay, TTL)" as RedisNonce
+}
+
+cloud "Other API instances\n(targets of propagation)" as OtherApis
+
+' --- internal lib wiring ---
+HttpInit --> RedisStore : credential CRUD\n+ propagation lookup
+HttpInit --> Crypto : hashClientSecret\n(on create / setSecret)
+HttpInit --> SignedFetch : returns signer
+HttpInit --> Verify : auth on internal route
+Verify --> RedisStore : read secretHash,\nconsume nonce
+Verify --> Crypto : signRequest (recompute)
+Verify --> Ip : allowedIps check
+SignedFetch --> Crypto : signRequest
+ExpressMid --> Verify
+RuntimeMod --> HttpInit : reuses clients + signer factory
+MsgInit --> MsgSig
+MsgInit --> RedisStore : credential CRUD
+MsgInit --> Crypto : hashClientSecret
+
+' --- store layer ---
+RedisStore --> Redis
+
+' --- consumer wiring ---
+Routes --> ExpressMid : protect routes
+Outbound --> SignedFetch : sign outgoing calls
+Messaging --> MsgSig : sign / verify payload
+Boot --> HttpInit : initializeHmacHttpAuth\n+ clients.create\n+ propagateClientToApis
+Boot --> MsgInit : initializeHmacMessageAuth
+
+' --- propagation outward ---
+HttpInit ..> OtherApis : signed POST\n/api/internal/hmac\n(payload carries secretHash)
+
+note bottom of HttpInit
+  Internal management route
+  bootstrap-then-auth:
+  - Redis empty -> first POST accepted without signature
+  - Otherwise -> HMAC signature required
+end note
+
+note right of Redis
+  Shared by HTTP + message
+  via distinct namespaces
+  (e.g. tenant-hmac
+  vs tenant-hmac-messages)
+end note
+
+@enduml

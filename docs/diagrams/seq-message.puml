@@ -1,0 +1,84 @@
+@startuml seq-message
+title Message signing / verification (async transports - AMQP, queues, events)
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Producer code" as Producer
+participant "hmacMessageAuth.signMessage\n(message/init)" as SignApi
+participant "signMessage core\n(message/signature)" as SignCore
+participant "toMessageString\n(core/utils)" as Canon
+participant "hashBody / createHmac\n(core/crypto)" as Crypto
+database "Redis (producer)" as RedisP
+
+queue "Broker / queue\n(RabbitMQ, Kafka, ...)" as Broker
+
+actor "Consumer code" as Consumer
+participant "hmacMessageAuth.verifyMessage" as VerifyApi
+participant "verifyMessage core" as VerifyCore
+database "Redis (consumer)" as RedisC
+
+== Producer: sign ==
+Producer -> SignApi : signMessage({ clientId, message })
+SignApi -> RedisP : credentialStore.getClientRecord(clientId)
+alt unknown
+  RedisP --> SignApi : null
+  SignApi -> Producer : throw CLIENT_NOT_FOUND (404)
+else expired
+  SignApi -> Producer : throw CLIENT_EXPIRED
+else found
+  RedisP --> SignApi : {secretHash, expiresAt, ...}
+end
+SignApi -> SignCore : signMessage({ clientId, message,\n  secret = secretHash, secretIsHashed: true })
+SignCore -> Canon : toMessageString(message)\n(deep sort keys for stable JSON.stringify)
+Canon --> SignCore : canonical string
+SignCore -> Crypto : messageHash = sha256(canonical)
+Crypto --> SignCore : messageHash hex
+SignCore -> Crypto : hmac-sha256(secretHash, "{clientId}\\n{messageHash}")
+Crypto --> SignCore : signature hex
+SignCore --> SignApi : { clientId, messageHash, signature }
+SignApi --> Producer : SignedMessage
+
+Producer -> Broker : publish { message payload,\n  meta: { clientId, signature } }
+note right of Broker
+  No anti-replay. No timestamp skew.
+  Volontaire - the transport queue
+  enforces ordering / deduplication.
+end note
+
+== Consumer: verify ==
+Broker -> Consumer : deliver message
+Consumer -> VerifyApi : verifyMessage({ clientId, message, signature })
+VerifyApi -> RedisC : credentialStore.getClientRecord(clientId)
+alt unknown
+  RedisC --> VerifyApi : null
+  VerifyApi -> Consumer : throw UNKNOWN_CLIENT
+else expired
+  VerifyApi -> Consumer : throw CLIENT_EXPIRED
+end
+RedisC --> VerifyApi : {secretHash, ...}
+VerifyApi -> VerifyCore : verifyMessage({ ..., secret = secretHash, secretIsHashed: true })
+VerifyCore -> Canon : toMessageString(message)
+Canon --> VerifyCore : canonical string\n(identical to producer's because of deep-sort)
+VerifyCore -> Crypto : messageHash + hmac-sha256(...)
+Crypto --> VerifyCore : expectedSignature
+VerifyCore -> VerifyCore : safeEqualHex(expectedSignature, signature)
+alt mismatch
+  VerifyCore --> VerifyApi : false
+  VerifyApi -> Consumer : throw BAD_SIGNATURE
+else match
+  VerifyCore --> VerifyApi : true
+  VerifyApi --> Consumer : SignedMessage{clientId, messageHash, signature}
+  Consumer -> Consumer : process payload safely
+end
+
+note over RedisP, RedisC
+  Producer and consumer Redis must hold
+  the SAME secretHash for clientId.
+  Get there either by:
+  - sharing HMAC_SECRET_TOKEN + same plain secret, OR
+  - propagating via the HTTP internal-management route
+    (hash transported as-is since 1.0.0).
+end note
+
+@enduml
