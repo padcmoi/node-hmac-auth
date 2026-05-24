@@ -9,7 +9,9 @@ export type HmacSourceRuntime = {
   sendSignedHelloToTargets: () => Promise<void>;
   sendRejectedSignedHelloToTargets: () => Promise<void>;
   verifyAllPropagatedClients: () => Promise<void>;
+  verifyAllPropagatedMessageClients: () => Promise<void>;
   logHttpClients: () => Promise<void>;
+  logMessageClients: () => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -60,17 +62,21 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
   });
   await redis.connect();
 
+  // v1.1.0: message store is bridged into the HTTP auth so propagateClientToApis
+  // can be called with targetStore: "message" (Redis fallback reads from the
+  // message store on the source side).
+  const hmacMessageAuth = initializeHmacMessageAuth({
+    redis,
+    namespace: `${namespace}-messages`,
+    secretToken,
+  });
+
   const hmacAuth = initializeHmacHttpAuth({
     redis,
     namespace,
     secretToken,
     internalManagementRoute,
-  });
-
-  const hmacMessageAuth = initializeHmacMessageAuth({
-    redis,
-    namespace: `${namespace}-messages`,
-    secretToken,
+    messageAuth: hmacMessageAuth,
   });
 
   const hmacConfig = microserviceConfig.hmac_config;
@@ -117,6 +123,7 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
         secret: signerSecret,
       });
 
+      const targetStore = plan.targetStore ?? "http";
       let applied = false;
       for (let attempt = 1; attempt <= 20; attempt += 1) {
         const results = await hmacAuth.propagateClientToApis({
@@ -126,9 +133,12 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
           secret: plan.secret,
           allowedIps: plan.allowedIps,
           apiFetch: signer,
+          targetStore,
         });
 
-        console.log(`[nest_source] propagation attempt=${attempt} clientId=${plan.clientId} results=${JSON.stringify(results)}`);
+        console.log(
+          `[nest_source] propagation attempt=${attempt} clientId=${plan.clientId} targetStore=${targetStore} results=${JSON.stringify(results)}`
+        );
 
         if (isCreateAlreadyApplied(results)) {
           applied = true;
@@ -139,9 +149,9 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
       }
 
       if (!applied) {
-        console.error(`[nest_source] propagation FAILED for clientId=${plan.clientId}`);
+        console.error(`[nest_source] propagation FAILED for clientId=${plan.clientId} (targetStore=${targetStore})`);
       } else {
-        console.log(`[nest_source] propagation applied for clientId=${plan.clientId}`);
+        console.log(`[nest_source] propagation applied for clientId=${plan.clientId} (targetStore=${targetStore})`);
       }
     }
   };
@@ -237,7 +247,12 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
     // both targets accept it (200) - proves cross-token verification works
     // because source/targets have DIFFERENT HMAC_SECRET_TOKEN yet share the
     // same secretHash (transported by the propagateClientToApis hotfix).
-    const propagatedClientIds = httpPropagationPlans.map((plan) => plan.clientId);
+    //
+    // v1.1.0: skip message-store propagation plans here - they don't sign
+    // HTTP requests; they are exercised by verifyAllPropagatedMessageClients below.
+    const propagatedClientIds = httpPropagationPlans
+      .filter((plan) => (plan.targetStore ?? "http") === "http")
+      .map((plan) => plan.clientId);
     const summary: Array<{ clientId: string; nest_target: number; express_target: number; allOk: boolean }> = [];
 
     for (const clientId of propagatedClientIds) {
@@ -287,9 +302,82 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
     console.log(`[nest_source] cross-token verify summary ok=${okCount}/${summary.length} details=${JSON.stringify(summary)}`);
   };
 
+  const verifyAllPropagatedMessageClients = async (): Promise<void> => {
+    // v1.1.0: each message clientId pushed to the targets via
+    // targetStore="message" must produce a signature that the target's
+    // hmacMessageAuth.verifyMessage accepts. This proves the propagated
+    // secretHash matches byte-for-byte on the message store too, regardless
+    // of HMAC_SECRET_TOKEN per-service.
+    const messageClientIds = httpPropagationPlans.filter((plan) => plan.targetStore === "message").map((plan) => plan.clientId);
+
+    const summary: Array<{
+      clientId: string;
+      nest_target: { status: number; ok: boolean };
+      express_target: { status: number; ok: boolean };
+      allOk: boolean;
+    }> = [];
+
+    for (const clientId of messageClientIds) {
+      const messagePayload = {
+        message: `cross-token message verify clientId=${clientId}`,
+        source: "nest_source",
+        sentAt: new Date().toISOString(),
+      };
+      let signed: { clientId: string; messageHash: string; signature: string };
+      try {
+        signed = await hmacMessageAuth.signMessage({ clientId, message: messagePayload });
+      } catch (error) {
+        console.error(`[nest_source] message verify skipped clientId=${clientId}: signMessage error`, error);
+        continue;
+      }
+
+      const perTarget: Record<string, { status: number; ok: boolean }> = {};
+      for (const target of secureTargets) {
+        const url = `${target}/message/verify`;
+        try {
+          const response = await fetch(url, {
+            method: "POST",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              clientId,
+              message: messagePayload,
+              signature: signed.signature,
+            }),
+          });
+          const rawBody = await response.text();
+          let parsed: unknown = rawBody || null;
+          try {
+            parsed = rawBody ? JSON.parse(rawBody) : null;
+          } catch {
+            parsed = rawBody;
+          }
+          const ok = response.status === 200 && parsed != null && (parsed as { ok?: boolean }).ok === true;
+          perTarget[target] = { status: response.status, ok };
+        } catch (error: unknown) {
+          perTarget[target] = { status: 0, ok: false };
+          console.error(`[nest_source] message verify clientId=${clientId} target=${target} fetch error:`, error);
+        }
+      }
+
+      const nest = perTarget["http://nest_target:3002"] ?? { status: 0, ok: false };
+      const exp = perTarget["http://express_target:3003"] ?? { status: 0, ok: false };
+      summary.push({ clientId, nest_target: nest, express_target: exp, allOk: nest.ok && exp.ok });
+    }
+
+    const okCount = summary.filter((row) => row.allOk).length;
+    console.log(
+      `[nest_source] cross-token message verify summary ok=${okCount}/${summary.length} details=${JSON.stringify(summary)}`
+    );
+  };
+
   const logHttpClients = async (): Promise<void> => {
     const clientIds = await hmacAuth.clients.listClientIds();
     console.log(`[nest_source] http clients => ${clientIds.join(",") || "(none)"}`);
+  };
+
+  const logMessageClients = async (): Promise<void> => {
+    const clientIds = await hmacMessageAuth.clients.listClientIds();
+    console.log(`[nest_source] message clients => ${clientIds.join(",") || "(none)"}`);
   };
 
   return {
@@ -299,7 +387,9 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
     sendSignedHelloToTargets,
     sendRejectedSignedHelloToTargets,
     verifyAllPropagatedClients,
+    verifyAllPropagatedMessageClients,
     logHttpClients,
+    logMessageClients,
     close: async () => {
       await redis.quit();
     },

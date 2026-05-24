@@ -8,6 +8,7 @@ import type {
   HmacClientCredentialWithSecret,
   HmacInternalManagementRequestInput,
   HmacInternalManagementRequestResult,
+  HmacMessageAuthBridge,
   InitializeHmacHttpAuthOptions,
   OnBadHttpSignature,
   PropagateHmacClientOptions,
@@ -280,6 +281,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       : undefined;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
+  const messageAuth = options.messageAuth;
 
   const verifyHttpSignature = async (input: VerifyHttpWithRedisInput): Promise<VerifiedHttpRequest> =>
     verifyHttpSignatureCore({
@@ -567,11 +569,22 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     const secret = typeof payload.secret === "string" ? payload.secret : undefined;
     const secretHash = typeof payload.secretHash === "string" ? payload.secretHash : undefined;
 
+    // v1.1.0: `kind` in the payload selects the target credential store on
+    // the remote. Defaults to "http" to keep 1.0.x callers unchanged.
+    const payloadKind = typeof payload.kind === "string" ? payload.kind : "http";
+    if (payloadKind !== "http" && payloadKind !== "message") {
+      return forbiddenInternal(`Unsupported propagation kind '${payloadKind}'`);
+    }
+    if (payloadKind === "message" && !messageAuth) {
+      return forbiddenInternal("Message store not configured on this API (pass messageAuth to initializeHmacHttpAuth)");
+    }
+    const targetClients = payloadKind === "message" ? (messageAuth as HmacMessageAuthBridge).clients : clients;
+
     if (!secret && !secretHash) {
       return forbiddenInternal("secret or secretHash is required");
     }
 
-    const existing = await clients.get(payloadClientId);
+    const existing = await targetClients.get(payloadClientId);
 
     if (method === "POST") {
       if (existing) {
@@ -579,9 +592,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       }
 
       if (secret) {
-        await clients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
+        await targetClients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
       } else {
-        await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
+        await targetClients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
       }
 
       return {
@@ -591,6 +604,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
           ok: true,
           operation: "create",
           clientId: payloadClientId,
+          kind: payloadKind,
         },
         verifiedAuth,
       };
@@ -601,9 +615,9 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     }
 
     if (secret) {
-      await clients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
+      await targetClients.setSecret(payloadClientId, secret, expiresAt, allowedIps);
     } else {
-      await clients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
+      await targetClients.setSecretHash(payloadClientId, secretHash as string, expiresAt, allowedIps);
     }
 
     return {
@@ -613,6 +627,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
         ok: true,
         operation: "update",
         clientId: payloadClientId,
+        kind: payloadKind,
       },
       verifiedAuth,
     };
@@ -696,11 +711,20 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     const operation = propagateOptions.operation;
     const method = operation === "health" ? "GET" : operation === "create" ? "POST" : operation === "update" ? "PUT" : "DELETE";
 
+    // v1.1.0: pick the target credential store. Default "http" (1.0.x behavior).
+    const targetStore: "http" | "message" = propagateOptions.targetStore ?? "http";
+    if (targetStore === "message" && !messageAuth) {
+      throw new Error(
+        "propagateClientToApis: targetStore='message' requires messageAuth to be passed to initializeHmacHttpAuth (used for the local Redis fallback)"
+      );
+    }
+
     // Local Redis fallback: when neither `secret` nor `secretHash` is provided
-    // for create/update propagation, look up the clientId in the local
-    // credentialStore and reuse its stored secretHash. This lets a caller
-    // declare a clientId only once in `internalCredentials[]` and reference
-    // it from `propagationPlans[]` without duplicating the plain secret.
+    // for create/update propagation, look up the clientId in the local store
+    // (HTTP or message, depending on targetStore) and reuse its stored
+    // secretHash. Lets a caller declare a clientId only once locally and
+    // reference it from a propagation plan without duplicating the plain
+    // secret.
     let resolvedSecretHash = propagateOptions.secretHash;
     if (
       operation !== "health" &&
@@ -708,9 +732,16 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       resolvedSecretHash === undefined &&
       propagateOptions.secret === undefined
     ) {
-      const localRecord = await credentialStore.getClientRecord(propagateOptions.clientId ?? "");
-      if (localRecord) {
-        resolvedSecretHash = localRecord.secretHash;
+      if (targetStore === "http") {
+        const localRecord = await credentialStore.getClientRecord(propagateOptions.clientId ?? "");
+        if (localRecord) {
+          resolvedSecretHash = localRecord.secretHash;
+        }
+      } else {
+        const localRecord = await (messageAuth as HmacMessageAuthBridge).clients.get(propagateOptions.clientId ?? "");
+        if (localRecord) {
+          resolvedSecretHash = localRecord.secretHash;
+        }
       }
     }
 
@@ -743,6 +774,12 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       }
       if (propagateOptions.allowedIps !== undefined) {
         payload.allowedIps = normalizeAllowedIpRules(propagateOptions.allowedIps);
+      }
+      // v1.1.0: include the target store kind so the remote routes the write
+      // to the right credential store. Omitted when "http" to keep the wire
+      // bytes-identical to 1.0.x for the default path.
+      if (targetStore !== "http") {
+        payload.kind = targetStore;
       }
     }
 

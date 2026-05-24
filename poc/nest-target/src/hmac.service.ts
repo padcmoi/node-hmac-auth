@@ -1,10 +1,17 @@
-import { initializeHmacHttpAuth, type InitializedHmacHttpAuth } from "@naskot/node-hmac-auth";
+import {
+  initializeHmacHttpAuth,
+  initializeHmacMessageAuth,
+  type InitializedHmacHttpAuth,
+  type InitializedHmacMessageAuth,
+} from "@naskot/node-hmac-auth";
 import { createClient, type RedisClientType } from "redis";
 
 export type HmacTargetRuntime = {
   hmacAuth: InitializedHmacHttpAuth;
+  hmacMessageAuth: InitializedHmacMessageAuth;
   getInternalManagementMiddleware: () => ReturnType<InitializedHmacHttpAuth["createInternalManagementMiddleware"]>;
   logHttpClients: () => Promise<void>;
+  logMessageClients: () => Promise<void>;
   close: () => Promise<void>;
 };
 
@@ -20,11 +27,21 @@ export async function createHmacTargetRuntime(label: string): Promise<HmacTarget
   });
   await redis.connect();
 
+  // v1.1.0: target now exposes a message store too, bridged into hmacAuth so a
+  // single /api/internal/hmac route can dispatch HTTP-store and message-store
+  // propagations based on payload.kind.
+  const hmacMessageAuth = initializeHmacMessageAuth({
+    redis,
+    namespace: `${namespace}-messages`,
+    secretToken,
+  });
+
   const hmacAuth = initializeHmacHttpAuth({
     redis,
     namespace,
     secretToken,
     internalManagementRoute,
+    messageAuth: hmacMessageAuth,
   });
 
   const logHttpClients = async (): Promise<void> => {
@@ -32,10 +49,17 @@ export async function createHmacTargetRuntime(label: string): Promise<HmacTarget
     console.log(`[${label}] http clients => ${clientIds.join(",") || "(none)"}`);
   };
 
+  const logMessageClients = async (): Promise<void> => {
+    const clientIds = await hmacMessageAuth.clients.listClientIds();
+    console.log(`[${label}] message clients => ${clientIds.join(",") || "(none)"}`);
+  };
+
   return {
     hmacAuth,
+    hmacMessageAuth,
     getInternalManagementMiddleware: () => hmacAuth.createInternalManagementMiddleware(),
     logHttpClients,
+    logMessageClients,
     close: async () => {
       await redis.quit();
     },

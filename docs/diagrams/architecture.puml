@@ -78,7 +78,10 @@ Boot --> HttpInit : initializeHmacHttpAuth\n+ clients.create\n+ propagateClientT
 Boot --> MsgInit : initializeHmacMessageAuth
 
 ' --- propagation outward ---
-HttpInit ..> OtherApis : signed POST\n/api/internal/hmac\n(payload carries secretHash)
+HttpInit ..> OtherApis : signed POST\n/api/internal/hmac\n(payload carries secretHash + optional kind=message)
+
+' --- v1.1.0 bridge: HTTP init dispatches to message store ---
+HttpInit ..> MsgInit : v1.1.0 messageAuth bridge\n(dispatch payload.kind=="message"\nto setSecretHash on the message store)
 
 note bottom of HttpInit
   Internal management route
