@@ -48,6 +48,7 @@ package "@naskot/node-hmac-auth" as Lib {
 database "Redis" as Redis {
   collections "{namespace}:clients\n(hash: clientId -> record)" as RedisClients
   collections "{namespace}:nonce:*\n(anti-replay, TTL)" as RedisNonce
+  collections "{namespace}:credentials-backup:*\n(v1.2.0, fromDbSeed only, TTL)" as RedisBackup
 }
 
 cloud "Other API instances\n(targets of propagation)" as OtherApis
@@ -78,16 +79,21 @@ Boot --> HttpInit : initializeHmacHttpAuth\n+ clients.create\n+ propagateClientT
 Boot --> MsgInit : initializeHmacMessageAuth
 
 ' --- propagation outward ---
-HttpInit ..> OtherApis : signed POST\n/api/internal/hmac\n(payload carries secretHash + optional kind=message)
+HttpInit ..> OtherApis : signed POST/PUT/DELETE/PATCH\n/api/internal/hmac\n(payload: secretHash + optional kind=message + optional fromDbSeed)
 
 ' --- v1.1.0 bridge: HTTP init dispatches to message store ---
 HttpInit ..> MsgInit : v1.1.0 messageAuth bridge\n(dispatch payload.kind=="message"\nto setSecretHash on the message store)
+
+' --- v1.2.0 backup + revert (Plane B, fromDbSeed) ---
+HttpInit ..> RedisBackup : v1.2.0\nsetSecret/setSecretHash with fromDbSeed:true\nauto-writes credentials-backup:{clientId} EX
+HttpInit ..> RedisBackup : v1.2.0\nclients.revert(clientId)\nrestores hash from backup, deletes key
 
 note bottom of HttpInit
   Internal management route
   bootstrap-then-auth:
   - Redis empty -> first POST accepted without signature
   - Otherwise -> HMAC signature required
+  PATCH (v1.2.0) dispatches to clients.revert.
 end note
 
 note right of Redis
