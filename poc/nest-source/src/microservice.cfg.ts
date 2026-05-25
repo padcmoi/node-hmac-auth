@@ -20,8 +20,6 @@ const PROPAGATED_CLIENTS = [
   { clientId: "client_partner_a", secret: "partnerA-uYR99qq" },
   { clientId: "client_partner_b", secret: "partnerB-pLm44ee" },
   { clientId: "client_ci_runner", secret: "ciRunnerSecret-DD2228" },
-  { clientId: "client_analytics", secret: "analyticsSecret-ANA-001" },
-  { clientId: "client_billing", secret: "billingSecret-INV-2026" },
   // v0.6.0 demo: declared in internalCredentials (with a plain secret), but
   // the propagation plan below omits its `secret` and relies on the lib's
   // Redis fallback to fetch the secretHash already stored locally.
@@ -32,10 +30,7 @@ const PROPAGATED_CLIENTS = [
 // Each one is declared locally in hmacMessage.credentials (so syncFromConfig
 // creates it in the source message store) AND in propagationPlans below with
 // targetStore: "message" so it lands on each remote's message store too.
-const MESSAGE_CLIENTS = [
-  { clientId: "msg_amqp_orders", secret: "msgOrdersSecret-MO-001" },
-  { clientId: "msg_amqp_billing", secret: "msgBillingSecret-MB-001" },
-];
+const MESSAGE_CLIENTS = [{ clientId: "msg_amqp_orders", secret: "msgOrdersSecret-MO-001" }];
 
 export const microserviceConfig: MicroserviceConfigTemplate = {
   version: "1",
