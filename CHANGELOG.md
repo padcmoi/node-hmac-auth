@@ -4,7 +4,7 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
-## [Unreleased] - yyyy-mm-dd
+## [1.2.0] - 2026-05-25
 
 - `feat(types): add optional fromDbSeed flag on PropagateHmacClientOptions, HmacClientCredential (optional on the public type for true 1.0.x/1.1.x type-level backward compatibility) and StoredClientCredentialRecord (passive origin marker, default false, omitted on the wire when not explicitly true)`
 - `feat(types): CreateHmacClientOptions accepts optional fromDbSeed so clients.create can tag the initial record at creation time (default false keeps the 1.0.x/1.1.x record shape unchanged)`
