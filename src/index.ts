@@ -31,6 +31,8 @@ export type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
+  HmacCredentialRevertResult,
+  HmacCredentialWriteOptions,
   HmacInternalManagementRequestInput,
   HmacInternalManagementRequestResult,
   HmacInternalPropagationOperation,

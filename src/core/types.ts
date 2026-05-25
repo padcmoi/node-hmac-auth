@@ -64,6 +64,15 @@ export interface InitializeHmacHttpAuthOptions {
    * When omitted, the lib behaves exactly like 1.0.x (HTTP-only propagation).
    */
   messageAuth?: HmacMessageAuthBridge;
+  /**
+   * v1.2.0: TTL (seconds) of the `credentials-backup:<clientId>` Redis key
+   * created automatically when a credential is rotated with
+   * `fromDbSeed: true`. Defaults to 600s (10 min). The backup is used by
+   * `clients.revert(clientId)` and by `propagateClientToApis({ operation: "revert" })`
+   * to restore the previous secretHash on partial-failure scenarios. Has no
+   * effect for credentials whose `fromDbSeed` is false (no backup is written).
+   */
+  dbSeedBackupTtlSeconds?: number;
 }
 
 /**
@@ -71,17 +80,34 @@ export interface InitializeHmacHttpAuthOptions {
  * initializeHmacHttpAuth. Kept structural to avoid an import cycle: any object
  * exposing this shape works (typically the result of initializeHmacMessageAuth).
  */
+export interface HmacCredentialWriteOptions {
+  fromDbSeed?: boolean;
+}
+
+export interface HmacCredentialRevertResult {
+  reverted: boolean;
+  restoredSecretHash?: string;
+}
+
 export interface HmacMessageAuthBridge {
   readonly namespace: string;
   clients: {
     get: (clientId: string) => Promise<HmacClientCredential | null>;
-    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null, allowedIps?: string[]) => Promise<void>;
+    setSecret: (
+      clientId: string,
+      secret: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+      options?: HmacCredentialWriteOptions
+    ) => Promise<void>;
     setSecretHash: (
       clientId: string,
       secretHash: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[]
+      allowedIps?: string[],
+      options?: HmacCredentialWriteOptions
     ) => Promise<void>;
+    revert: (clientId: string) => Promise<HmacCredentialRevertResult>;
     delete: (clientId: string) => Promise<void>;
     listClientIds: () => Promise<string[]>;
   };
@@ -92,6 +118,12 @@ export interface InitializeHmacMessageAuthOptions {
   namespace?: string;
   defaultSecretLengthBytes?: number;
   secretToken?: string;
+  /**
+   * v1.2.0: TTL (seconds) of the `credentials-backup:<clientId>` Redis key
+   * for the message credential store. Same semantics as the HTTP variant.
+   * Default 600s.
+   */
+  dbSeedBackupTtlSeconds?: number;
 }
 
 export interface VerifyHttpWithRedisInput {
@@ -112,6 +144,14 @@ export interface HmacClientCredential {
   updatedAt: number;
   expiresAt: number | null;
   allowedIps: string[];
+  /**
+   * v1.2.0 origin marker. Optional on the public type to preserve
+   * backward compatibility: consumers built before 1.2.0 that mock or
+   * construct an `HmacClientCredential` literal without this field stay
+   * type-valid. The lib always populates the field on objects it returns
+   * (false by default, true when stored as such on the record).
+   */
+  fromDbSeed?: boolean;
 }
 
 export interface HmacClientCredentialWithSecret extends HmacClientCredential {
@@ -124,6 +164,14 @@ export interface CreateHmacClientOptions {
   secretLengthBytes?: number;
   plainSecret?: string;
   allowedIps?: string[];
+  /**
+   * v1.2.0: tag the credential as DB-seed-originated at creation time. The
+   * record stores the flag so any subsequent setSecret/setSecretHash that
+   * passes `fromDbSeed: true` writes a TTL backup of the previous hash and a
+   * `clients.revert(clientId)` becomes meaningful. Default `false` keeps
+   * 1.0.x/1.1.x behavior.
+   */
+  fromDbSeed?: boolean;
 }
 
 export interface RegenerateHmacSecretOptions {
@@ -179,7 +227,7 @@ export interface HmacInternalManagementRequestResult {
   verifiedAuth?: VerifiedHttpRequest | null;
 }
 
-export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete";
+export type HmacInternalPropagationOperation = "health" | "create" | "update" | "delete" | "revert";
 
 /**
  * Which credential store the propagation targets on the remote API.
@@ -207,6 +255,13 @@ export interface PropagateHmacClientOptions {
   allowedIps?: string[];
   /** Defaults to "http" - 1.0.x behavior. */
   targetStore?: HmacPropagateTargetStore;
+  /**
+   * Marks the propagated credential as originating from a dynamic DB-seed
+   * pipeline. Default `false`. When `true`, the wire payload carries the flag
+   * and the remote target stores it alongside the credential record. Passive
+   * marker; reserved for future rotation/backup logic on db-seeded entries.
+   */
+  fromDbSeed?: boolean;
 }
 
 export interface PropagateHmacClientResult {
