@@ -64,6 +64,26 @@ export class FakeRedis {
     return "OK";
   }
 
+  async get(key: string): Promise<string | null> {
+    this.cleanup();
+    const entry = this.kv.get(key);
+    return entry ? entry.value : null;
+  }
+
+  async del(key: string | string[]): Promise<number> {
+    const keys = Array.isArray(key) ? key : [key];
+    let removed = 0;
+    for (const k of keys) {
+      if (this.kv.delete(k)) {
+        removed += 1;
+      }
+      if (this.hashes.delete(k)) {
+        removed += 1;
+      }
+    }
+    return removed;
+  }
+
   hasHashKey(key: string): boolean {
     return this.hashes.has(key);
   }
