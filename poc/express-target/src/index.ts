@@ -22,6 +22,20 @@ async function bootstrap(): Promise<void> {
       },
     })
   );
+  // Compatibility with verbs that carry no body (GET, DELETE, PATCH without
+  // payload). `express.json({ verify })` only fires its callback when there is
+  // a body to parse, so `req.rawBody` stays undefined for body-less requests.
+  // The lib's middleware then falls back to `req.body` (which `express.json`
+  // sets to `{}` even for GET) and signs `JSON.stringify({}) === "{}"` server-
+  // side while the caller signed `""`. We normalize by forcing an empty Buffer
+  // so the server and the client agree on `hash("")`.
+  app.use((req, _res, next) => {
+    const r = req as express.Request & { rawBody?: Buffer };
+    if (!r.rawBody) {
+      r.rawBody = Buffer.alloc(0);
+    }
+    next();
+  });
 
   app.use("/secure", hmac.hmacAuth.verifyHttpRequest);
   app.use(hmac.getInternalManagementMiddleware());

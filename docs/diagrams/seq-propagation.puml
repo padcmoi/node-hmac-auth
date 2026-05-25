@@ -45,7 +45,7 @@ note over Signer
 end note
 
 == Target receives the POST ==
-Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: {clientId, secretHash, allowedIps, ...}
+Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: {clientId, secretHash, allowedIps, fromDbSeed?, ...}\n(fromDbSeed only emitted when true; v1.2.0)
 Target -> Handler : handleInternalManagementRequest(input)
 Handler -> RedisTgt : clients.listClientIds()
 RedisTgt --> Handler : knownClients

@@ -1,0 +1,85 @@
+@startuml seq-revert
+title Revert v1.2.0 - rotation + TTL backup + partial-failure rollback (Plane B / fromDbSeed=true)
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Source app\n(db-seed loader)" as App
+participant "propagateClientToApis\n(http/init)" as Propagate
+database "Redis (source)" as RedisSrc
+collections "Target A\n/api/internal/hmac" as TargetA
+collections "Target B\n/api/internal/hmac" as TargetB
+participant "handleInternalManagementRequest" as Handler
+database "Redis (target A)" as RedisA
+database "Redis (target B)" as RedisB
+
+== Step 1: rotation with fromDbSeed=true ==
+App -> Propagate : propagateClientToApis({\n  operation: "update",\n  clientId: "bizClient",\n  secret: "NEW",\n  fromDbSeed: true,\n  targets: [A, B]\n})
+
+note over Propagate
+  Local side-effect on the source store:
+  clients.setSecret(..., { fromDbSeed: true })
+  writes a TTL backup of the previous
+  secretHash in:
+   <namespace>:credentials-backup:bizClient
+  EX dbSeedBackupTtlSeconds (default 600)
+end note
+Propagate -> RedisSrc : SET credentials-backup:bizClient = OLD_HASH EX 600
+
+== Step 2: wire to each target ==
+Propagate -> TargetA : PUT /api/internal/hmac\nBody: { clientId, secretHash: NEW_HASH, allowedIps, fromDbSeed: true }
+TargetA -> Handler : handleInternalManagementRequest
+Handler -> RedisA : HGET clients[bizClient]\nreturns { secretHash: OLD_HASH, fromDbSeed: ... }
+note right of Handler
+  fromDbSeed === true AND
+  existing AND
+  existing.secretHash !== NEW_HASH
+  -> write backup BEFORE the HSET
+end note
+Handler -> RedisA : SET credentials-backup:bizClient = OLD_HASH EX 600
+Handler -> RedisA : HSET clients[bizClient] = { secretHash: NEW_HASH, fromDbSeed: true, ... }
+Handler --> Propagate : 201 { operation: "update", accepted: true }
+
+Propagate -> TargetB : PUT /api/internal/hmac\nBody: { clientId, secretHash: NEW_HASH, allowedIps, fromDbSeed: true }
+TargetB --> Propagate : 0 / 4xx / 5xx (refused for any reason)
+
+== Step 3: source classifies and decides ==
+Propagate -> App : results=[{target:A, accepted:true}, {target:B, accepted:false}]
+note over App
+  Mixed result on a fromDbSeed plan:
+  - acceptedTargets = [A]
+  - refusedTargets  = [B]
+  Trigger rollback.
+end note
+
+== Step 4: REVERT on accepted targets (Scenario 1) ==
+App -> Propagate : propagateClientToApis({\n  operation: "revert",\n  clientId: "bizClient",\n  targets: [A]\n})
+Propagate -> TargetA : PATCH /api/internal/hmac\nBody: { clientId } (no secret, no allowedIps)
+TargetA -> Handler : handleInternalManagementRequest (PATCH)
+Handler -> RedisA : GET credentials-backup:bizClient -> OLD_HASH
+Handler -> RedisA : HSET clients[bizClient] = { secretHash: OLD_HASH, ... }\nDEL credentials-backup:bizClient
+Handler --> Propagate : 201 { operation: "revert", reverted: true }
+
+== Step 5: REVERT locally on source ==
+App -> RedisSrc : clients.revert("bizClient")\n(equivalent local rollback)
+RedisSrc -> RedisSrc : restore OLD_HASH, DEL local backup
+note right of App
+  Convergence:
+  - source: OLD_HASH
+  - target A: OLD_HASH (was bumped, then reverted)
+  - target B: OLD_HASH (was never bumped)
+  Federation back in sync. Next sync tick
+  will retry with a fresh secret.
+end note
+
+== Safety fallback ==
+note over RedisSrc, RedisB
+  If the source crashes between step 2 and step 4,
+  the credentials-backup TTL expires on its own
+  on every target that still holds one. The lib
+  then refuses to revert (reverted: false, no-op)
+  and the federation lives with the new hash
+  until the next sync tick decides otherwise.
+end note
+
+@enduml

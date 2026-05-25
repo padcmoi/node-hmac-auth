@@ -1,6 +1,8 @@
 import { initializeHmacHttpAuth, initializeHmacMessageAuth, type InitializedHmacHttpAuth } from "@naskot/node-hmac-auth";
 import { createClient, type RedisClientType } from "redis";
+import { dbSeedRows } from "./db-seed.cfg";
 import { microserviceConfig } from "./microservice.cfg";
+import { runTortureSuite } from "./torture-suite";
 
 export type HmacSourceRuntime = {
   hmacAuth: InitializedHmacHttpAuth;
@@ -154,6 +156,97 @@ export async function createHmacSourceRuntime(): Promise<HmacSourceRuntime> {
         console.log(`[nest_source] propagation applied for clientId=${plan.clientId} (targetStore=${targetStore})`);
       }
     }
+
+    // v1.2.0 dynamic db-seed origin: optional, simulated by db-seed.cfg.ts.
+    // Each row is propagated with `fromDbSeed: true` so the targets store the
+    // origin marker alongside the credential. The signer is the same static
+    // HTTP credential (`internal_sync`) used above; nothing else changes.
+    const dbSeedSigner = hmacAuth.createHttpSignedFetchClient({
+      clientId: "internal_sync",
+      secret: credentialMap.get("internal_sync") ?? "",
+    });
+
+    const dbSeedTargets = secureTargets;
+
+    for (const row of dbSeedRows) {
+      const targetStore = row.targetStore ?? "http";
+      let applied = false;
+      for (let attempt = 1; attempt <= 20; attempt += 1) {
+        const results = await hmacAuth.propagateClientToApis({
+          operation: "create",
+          targets: dbSeedTargets,
+          clientId: row.clientId,
+          secret: row.secret,
+          allowedIps: ["0.0.0.0/0", "::/0"],
+          apiFetch: dbSeedSigner,
+          targetStore,
+          fromDbSeed: true,
+        });
+
+        console.log(
+          `[nest_source] db-seed propagation attempt=${attempt} clientId=${row.clientId} targetStore=${targetStore} fromDbSeed=true results=${JSON.stringify(results)}`
+        );
+
+        if (isCreateAlreadyApplied(results)) {
+          applied = true;
+          break;
+        }
+
+        await sleep(1500);
+      }
+
+      if (!applied) {
+        console.error(`[nest_source] db-seed propagation FAILED clientId=${row.clientId} (targetStore=${targetStore})`);
+      } else {
+        console.log(`[nest_source] db-seed propagation applied clientId=${row.clientId} (targetStore=${targetStore})`);
+      }
+    }
+
+    // v1.2.0 revert demo: for each db-seeded row, rotate the secret (operation
+    // "update" with `fromDbSeed: true`) so the target writes a TTL backup of
+    // the previous hash, then immediately call revert (operation "revert") so
+    // the target restores the previous hash from that backup. Observable via
+    // the targets' periodic `http clients =>` / `message clients =>` log line
+    // which shows `hash=...` (current) and `backup=...` (TTL key).
+    for (const row of dbSeedRows) {
+      const targetStore = row.targetStore ?? "http";
+      const rotatedSecret = `${row.secret}-rotated`;
+
+      const rotateResults = await hmacAuth.propagateClientToApis({
+        operation: "update",
+        targets: dbSeedTargets,
+        clientId: row.clientId,
+        secret: rotatedSecret,
+        allowedIps: ["0.0.0.0/0", "::/0"],
+        apiFetch: dbSeedSigner,
+        targetStore,
+        fromDbSeed: true,
+      });
+      console.log(
+        `[nest_source] revert-demo step1 rotate clientId=${row.clientId} targetStore=${targetStore} accepted=${rotateResults.every((r) => r.accepted)}`
+      );
+
+      const revertResults = await hmacAuth.propagateClientToApis({
+        operation: "revert",
+        targets: dbSeedTargets,
+        clientId: row.clientId,
+        apiFetch: dbSeedSigner,
+        targetStore,
+      });
+      console.log(
+        `[nest_source] revert-demo step2 revert clientId=${row.clientId} targetStore=${targetStore} results=${JSON.stringify(revertResults.map((r) => ({ target: r.target, status: r.status, body: r.body })))}`
+      );
+    }
+
+    // Exhaustive torture suite covering revert paths, CRUD propagate paths,
+    // local clients management and field preservation on revert. Each helper
+    // logs every assertion outcome; a green run shows zero `torture FAIL:` lines.
+    await runTortureSuite({
+      hmacAuth,
+      hmacMessageAuth,
+      signer: dbSeedSigner,
+      targets: dbSeedTargets,
+    });
   };
 
   const sendSignedPayloadToTargets = async (opts: { clientId: string; payload: unknown; logLabel: string }): Promise<void> => {

@@ -20,6 +20,12 @@ export type HmacHttpPropagationPlan = {
   targetStore?: "http" | "message";
 };
 
+// NOTE (v1.2.0): the `fromDbSeed` origin marker is intentionally NOT exposed
+// on this static config type. Dynamic (db-seeded) credentials live in their
+// own pipeline (see `db-seed.cfg.ts`). Keeping the two surfaces separate is a
+// deliberate architectural choice so a consumer that opts out of the dynamic
+// pipeline pays zero cost (no flag, no surface, no in-memory state).
+
 export type HmacMessageCredentialPlan = {
   clientId: string;
   secret: string;

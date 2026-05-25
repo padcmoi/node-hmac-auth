@@ -4,6 +4,22 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [1.2.0] - 2026-05-25
+
+- `feat(types): add optional fromDbSeed flag on PropagateHmacClientOptions, HmacClientCredential (optional on the public type for true 1.0.x/1.1.x type-level backward compatibility) and StoredClientCredentialRecord (passive origin marker, default false, omitted on the wire when not explicitly true)`
+- `feat(types): CreateHmacClientOptions accepts optional fromDbSeed so clients.create can tag the initial record at creation time (default false keeps the 1.0.x/1.1.x record shape unchanged)`
+- `feat(stores): RedisCredentialStore writes/reads/clears credentials-backup:<clientId> with TTL (redisSetEx + redisGet + redisDel helpers; assertRedisClient now also requires get + del)`
+- `feat(http+message): clients.setSecret and clients.setSecretHash accept HmacCredentialWriteOptions { fromDbSeed?: boolean }; when fromDbSeed=true and an existing record changes hash, the previous secretHash is automatically written to credentials-backup:<clientId> with TTL`
+- `feat(http+message): clients.revert(clientId) restores the credential's secretHash from credentials-backup:<clientId> if the key is still alive, clears the backup, preserves fromDbSeed/allowedIps/expiresAt; no-op when no backup exists`
+- `feat(types): InitializeHmacHttpAuthOptions and InitializeHmacMessageAuthOptions expose dbSeedBackupTtlSeconds (default 600s)`
+- `feat(http): HmacInternalManagementRequestInput accepts PATCH; handleInternalManagementRequest dispatches PATCH to clients.revert (HTTP store by default, message store when payload.kind="message")`
+- `feat(http): propagateClientToApis accepts operation: "revert" (sends PATCH /internal-management with { clientId, kind? }); no secret/secretHash/allowedIps sent for revert`
+- `feat(types): HmacInternalPropagationOperation union extended with "revert"; HmacMessageAuthBridge.clients gains revert(clientId)`
+- `docs(architecture): record schema documented as {secretHash, createdAt, updatedAt, expiresAt, allowedIps, fromDbSeed}; passive marker semantics clarified`
+- `docs(diagrams): seq-propagation.puml + seq-propagation-message.puml mention fromDbSeed?; PNGs regenerated`
+- `demo(poc): nest-source/src/db-seed.cfg.ts (NEW) holds dynamic origin rows separated from microservice.cfg.ts (static); nest-source runs a revert-demo (rotate update then revert) on each db-seed row after the initial propagation pass; targets log clients with hash=<first12> and backup=<first12|none> alongside fromDbSeed every 10s`
+- `refactor(src): split http/init.ts (967->184 lines), message/init.ts (348->146 lines) and stores/redis.ts (279->33 lines, now a façade) into per-business-logic modules (http/{constants,internal-helpers,internal-management,middlewares,propagate}.ts and stores/{redis-client,namespace,credential-record,credential-store,nonce-store,credentials-clients-factory}.ts); zero public-surface change, src/index.ts unchanged, all 36 vitest tests green`
+
 ## [1.1.1] - 2026-05-24
 
 - `fix(types): re-export HmacPropagateTargetStore and HmacMessageAuthBridge from the package index (omitted in 1.1.0, forced consumers to inline the literal "http" | "message")`

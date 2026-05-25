@@ -43,14 +43,47 @@ export async function createHmacExpressRuntime(label: string): Promise<HmacExpre
     messageAuth: hmacMessageAuth,
   });
 
+  const readBackupHash = async (storeNamespace: string, clientId: string): Promise<string | null> => {
+    const key = `${storeNamespace}:credentials-backup:${clientId}`;
+    const value = await redis.get(key);
+    return value ?? null;
+  };
+
+  const summarizeHash = (hash: string | null | undefined): string => (hash ? hash.slice(0, 12) : "(none)");
+
   const logHttpClients = async (): Promise<void> => {
     const clientIds = await hmacAuth.clients.listClientIds();
-    console.log(`[${label}] http clients => ${clientIds.join(",") || "(none)"}`);
+    if (clientIds.length === 0) {
+      console.log(`[${label}] http clients => (none)`);
+      return;
+    }
+    const lines: string[] = [];
+    for (const clientId of clientIds) {
+      const credential = await hmacAuth.clients.get(clientId);
+      const backup = await readBackupHash(namespace, clientId);
+      lines.push(
+        `${clientId}(fromDbSeed=${credential?.fromDbSeed === true},hash=${summarizeHash(credential?.secretHash)},backup=${summarizeHash(backup)})`
+      );
+    }
+    console.log(`[${label}] http clients => ${lines.join(",")}`);
   };
 
   const logMessageClients = async (): Promise<void> => {
     const clientIds = await hmacMessageAuth.clients.listClientIds();
-    console.log(`[${label}] message clients => ${clientIds.join(",") || "(none)"}`);
+    if (clientIds.length === 0) {
+      console.log(`[${label}] message clients => (none)`);
+      return;
+    }
+    const messageNamespace = `${namespace}-messages`;
+    const lines: string[] = [];
+    for (const clientId of clientIds) {
+      const credential = await hmacMessageAuth.clients.get(clientId);
+      const backup = await readBackupHash(messageNamespace, clientId);
+      lines.push(
+        `${clientId}(fromDbSeed=${credential?.fromDbSeed === true},hash=${summarizeHash(credential?.secretHash)},backup=${summarizeHash(backup)})`
+      );
+    }
+    console.log(`[${label}] message clients => ${lines.join(",")}`);
   };
 
   return {

@@ -1,49 +1,22 @@
-import { randomBytes } from "node:crypto";
-import { hashClientSecret } from "../core/crypto.js";
 import { HmacAuthError } from "../core/errors.js";
-import { normalizeAllowedIpRules } from "../core/ip.js";
 import type {
   CreateHmacClientOptions,
   HmacClientCredential,
   HmacClientCredentialWithSecret,
+  HmacCredentialRevertResult,
+  HmacCredentialWriteOptions,
   InitializeHmacMessageAuthOptions,
   RegenerateHmacSecretOptions,
   SignedMessage,
   SignMessageWithRedisInput,
   VerifyMessageWithRedisInput,
 } from "../core/types.js";
-import {
-  assertRedisClient,
-  RedisCredentialStore,
-  resolveNamespace,
-  type RedisLikeClient,
-  type StoredClientCredentialRecord,
-} from "../stores/redis.js";
+import { createCredentialsClientsFactory } from "../stores/credentials-clients-factory.js";
+import { assertRedisClient, RedisCredentialStore, resolveNamespace, type RedisLikeClient } from "../stores/redis.js";
 import { signMessage as signMessageCore, verifyMessage as verifyMessageCore } from "./signature.js";
 
 const DEFAULT_SECRET_LENGTH_BYTES = 32;
-
-function assertClientId(clientId: string): void {
-  if (!clientId || !clientId.trim()) {
-    throw new HmacAuthError("MISSING_CLIENT_ID", "clientId cannot be empty", 400);
-  }
-}
-
-function normalizeSecretHash(secretHash: string): string {
-  return secretHash.trim().toLowerCase();
-}
-
-function normalizeExpiresAt(value?: number | Date | null): number | null {
-  if (value == null) {
-    return null;
-  }
-
-  const expiresAt = value instanceof Date ? value.getTime() : Number(value);
-  if (!Number.isFinite(expiresAt)) {
-    throw new Error("expiresAt must be a valid timestamp or Date");
-  }
-  return expiresAt;
-}
+const DEFAULT_DB_SEED_BACKUP_TTL_SECONDS = 600;
 
 function assertSecretLength(secretLengthBytes: number): void {
   if (!Number.isInteger(secretLengthBytes) || secretLengthBytes < 16 || secretLengthBytes > 128) {
@@ -51,26 +24,10 @@ function assertSecretLength(secretLengthBytes: number): void {
   }
 }
 
-function assertPlainSecret(secret: string): void {
-  if (!secret || !secret.trim()) {
-    throw new Error("plainSecret cannot be empty");
+function assertClientId(clientId: string): void {
+  if (!clientId || !clientId.trim()) {
+    throw new HmacAuthError("MISSING_CLIENT_ID", "clientId cannot be empty", 400);
   }
-}
-
-function mapCredential(clientId: string, record: StoredClientCredentialRecord): HmacClientCredential {
-  return {
-    clientId,
-    secretHash: record.secretHash,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-    expiresAt: record.expiresAt,
-    allowedIps: record.allowedIps,
-  };
-}
-
-function generateSecret(secretLengthBytes: number): string {
-  assertSecretLength(secretLengthBytes);
-  return randomBytes(secretLengthBytes).toString("hex");
 }
 
 export interface InitializedHmacMessageAuth {
@@ -85,15 +42,23 @@ export interface InitializedHmacMessageAuth {
     get: (clientId: string) => Promise<HmacClientCredential | null>;
     delete: (clientId: string) => Promise<void>;
     regenerateSecret: (clientId: string, options?: RegenerateHmacSecretOptions) => Promise<HmacClientCredentialWithSecret>;
-    setSecret: (clientId: string, secret: string, expiresAt?: number | Date | null, allowedIps?: string[]) => Promise<void>;
+    setSecret: (
+      clientId: string,
+      secret: string,
+      expiresAt?: number | Date | null,
+      allowedIps?: string[],
+      options?: HmacCredentialWriteOptions
+    ) => Promise<void>;
     setSecretHash: (
       clientId: string,
       secretHash: string,
       expiresAt?: number | Date | null,
-      allowedIps?: string[]
+      allowedIps?: string[],
+      options?: HmacCredentialWriteOptions
     ) => Promise<void>;
     setAllowedIps: (clientId: string, allowedIps: string[]) => Promise<void>;
     getSecretHash: (clientId: string) => Promise<string | null>;
+    revert: (clientId: string) => Promise<HmacCredentialRevertResult>;
   };
 }
 
@@ -106,9 +71,17 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
 
   const namespace = resolveNamespace(options.namespace);
   const defaultSecretLengthBytes = options.defaultSecretLengthBytes ?? DEFAULT_SECRET_LENGTH_BYTES;
+  const dbSeedBackupTtlSeconds = options.dbSeedBackupTtlSeconds ?? DEFAULT_DB_SEED_BACKUP_TTL_SECONDS;
   const secretToken = options.secretToken;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
+
+  const clients = createCredentialsClientsFactory({
+    credentialStore,
+    secretToken,
+    defaultSecretLengthBytes,
+    dbSeedBackupTtlSeconds,
+  });
 
   return {
     redis: options.redis,
@@ -168,132 +141,6 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
         secretIsHashed: true,
       });
     },
-    clients: {
-      create: async (createOptions) => {
-        assertClientId(createOptions.clientId);
-        let secret: string;
-        if (createOptions.plainSecret !== undefined) {
-          assertPlainSecret(createOptions.plainSecret);
-          secret = createOptions.plainSecret;
-        } else {
-          secret = generateSecret(createOptions.secretLengthBytes ?? defaultSecretLengthBytes);
-        }
-        const secretHash = hashClientSecret(secret, secretToken);
-        const now = Date.now();
-        const record: StoredClientCredentialRecord = {
-          secretHash,
-          createdAt: now,
-          updatedAt: now,
-          expiresAt: normalizeExpiresAt(createOptions.expiresAt),
-          allowedIps: normalizeAllowedIpRules(createOptions.allowedIps),
-        };
-
-        await credentialStore.setClientRecord(createOptions.clientId, record);
-
-        return {
-          ...mapCredential(createOptions.clientId, record),
-          secret,
-        };
-      },
-      listClientIds: async () => credentialStore.listClientIds(),
-      get: async (clientId) => {
-        assertClientId(clientId);
-        const record = await credentialStore.getClientRecord(clientId);
-        if (!record) {
-          return null;
-        }
-        return mapCredential(clientId, record);
-      },
-      delete: async (clientId) => {
-        assertClientId(clientId);
-        await credentialStore.deleteClient(clientId);
-      },
-      regenerateSecret: async (clientId, regenerateOptions) => {
-        assertClientId(clientId);
-        const existing = await credentialStore.getClientRecord(clientId);
-        if (!existing) {
-          throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot regenerate secret: client not found", 404);
-        }
-
-        let secret: string;
-        if (regenerateOptions?.plainSecret !== undefined) {
-          assertPlainSecret(regenerateOptions.plainSecret);
-          secret = regenerateOptions.plainSecret;
-        } else {
-          const secretLength = regenerateOptions?.secretLengthBytes ?? defaultSecretLengthBytes;
-          secret = generateSecret(secretLength);
-        }
-        const now = Date.now();
-        const expiresAt =
-          regenerateOptions?.expiresAt !== undefined
-            ? normalizeExpiresAt(regenerateOptions.expiresAt)
-            : regenerateOptions?.preserveExpiresAt === false
-              ? null
-              : existing.expiresAt;
-
-        const updatedRecord: StoredClientCredentialRecord = {
-          secretHash: hashClientSecret(secret, secretToken),
-          createdAt: existing.createdAt || now,
-          updatedAt: now,
-          expiresAt,
-          allowedIps:
-            regenerateOptions?.allowedIps !== undefined
-              ? normalizeAllowedIpRules(regenerateOptions.allowedIps)
-              : existing.allowedIps,
-        };
-
-        await credentialStore.setClientRecord(clientId, updatedRecord);
-        return {
-          ...mapCredential(clientId, updatedRecord),
-          secret,
-        };
-      },
-      setSecret: async (clientId, secret, expiresAt, allowedIps) => {
-        assertClientId(clientId);
-        const now = Date.now();
-        const existing = await credentialStore.getClientRecord(clientId);
-        const record: StoredClientCredentialRecord = {
-          secretHash: hashClientSecret(secret, secretToken),
-          createdAt: existing?.createdAt || now,
-          updatedAt: now,
-          expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
-          allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
-        };
-        await credentialStore.setClientRecord(clientId, record);
-      },
-      setSecretHash: async (clientId, secretHash, expiresAt, allowedIps) => {
-        assertClientId(clientId);
-        const now = Date.now();
-        const existing = await credentialStore.getClientRecord(clientId);
-        const record: StoredClientCredentialRecord = {
-          secretHash: normalizeSecretHash(secretHash),
-          createdAt: existing?.createdAt || now,
-          updatedAt: now,
-          expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
-          allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
-        };
-        await credentialStore.setClientRecord(clientId, record);
-      },
-      setAllowedIps: async (clientId, allowedIps) => {
-        assertClientId(clientId);
-        const now = Date.now();
-        const existing = await credentialStore.getClientRecord(clientId);
-        if (!existing) {
-          throw new HmacAuthError("CLIENT_NOT_FOUND", "Cannot set allowedIps: client not found", 404);
-        }
-
-        await credentialStore.setClientRecord(clientId, {
-          secretHash: existing.secretHash,
-          createdAt: existing.createdAt || now,
-          updatedAt: now,
-          expiresAt: existing.expiresAt ?? null,
-          allowedIps: normalizeAllowedIpRules(allowedIps),
-        });
-      },
-      getSecretHash: async (clientId) => {
-        assertClientId(clientId);
-        return credentialStore.getSecretHash(clientId);
-      },
-    },
+    clients,
   };
 }

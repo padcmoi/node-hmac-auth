@@ -30,6 +30,7 @@ For namespace `my_company_prod`:
 
 - `my_company_prod:clients` (hash map of client credentials)
 - `my_company_prod:nonce:*` (anti-replay nonce keys)
+- `my_company_prod:credentials-backup:*` (v1.2.0, written only when a credential with `fromDbSeed=true` is rotated; native TTL, used by `clients.revert(clientId)` and the PATCH revert operation)
 
 ## Header Glossary
 
