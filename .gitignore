@@ -6,6 +6,9 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Pack artifacts (npm pack / pnpm pack). Never commit packed tarballs.
+*.tgz
+
 # Environment files
 .env
 .env.*
