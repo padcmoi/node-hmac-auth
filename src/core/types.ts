@@ -36,6 +36,23 @@ export interface VerifyHttpSignatureInput {
   now?: number;
   onBadSignature?: OnBadHttpSignature;
   metadata?: unknown;
+  /**
+   * v1.3.0: when set, requests matched against a credential whose stored
+   * `purpose` is `"propagation-only"` are rejected with HTTP 403
+   * `PROPAGATION_ONLY_FORBIDDEN` unless `path` equals this exact route. Used
+   * by `initializeHmacHttpAuth` to enforce the propagation-key cantonment
+   * documented in `docs/wire-contract.md`. When omitted, no purpose check is
+   * applied and the credential behaves as `purpose: "any"`.
+   */
+  internalManagementRoute?: string;
+  /**
+   * v1.3.0: when set, every signed request is rejected with HTTP 403
+   * `BOOTSTRAP_LOCKED` until a credential with this exact clientId exists in
+   * the local Redis credential store. Used by `initializeHmacHttpAuth` to
+   * gate business routes behind the initial bootstrap of the propagation
+   * key. When omitted, no lock is enforced.
+   */
+  requireBootstrapClientId?: string;
 }
 
 export interface VerifiedRequest {
@@ -55,6 +72,23 @@ export interface InitializeHmacHttpAuthOptions {
   secretToken?: string;
   onBadSignature?: OnBadHttpSignature;
   internalManagementRoute?: string;
+  /**
+   * v1.3.0: name of the clientId that MUST be the first credential stored on
+   * this API instance. Until a credential with this exact clientId exists in
+   * the local Redis credential store:
+   *   - `verifyHttpSignature` rejects every signed business request with
+   *     HTTP 403 `BOOTSTRAP_LOCKED`.
+   *   - `handleInternalManagementRequest` accepts only `POST` payloads whose
+   *     `clientId` equals this value (the bootstrap of the named credential
+   *     itself); every other write returns 403 `BOOTSTRAP_LOCKED`.
+   *   - `GET` health probes stay open so external orchestrators (e.g.
+   *     `@naskot/node-hmac-auth-management`) can observe `bootstrapLocked`
+   *     and push the right credential first.
+   * Once the named credential is stored, the lock auto-releases and the
+   * API behaves exactly like 1.2.x. Default `undefined` keeps the
+   * pre-v1.3.0 bootstrap-window behavior unchanged.
+   */
+  requireBootstrapClientId?: string;
   /**
    * Optional bridge to the message credential store, used by `propagateClientToApis`
    * when `targetStore: "message"` is requested. Required on both sides:
@@ -82,7 +116,28 @@ export interface InitializeHmacHttpAuthOptions {
  */
 export interface HmacCredentialWriteOptions {
   fromDbSeed?: boolean;
+  /**
+   * v1.3.0: tag the credential with a usage scope. Default `undefined`
+   * keeps 1.2.x semantics ("any" implicit). When set to "propagation-only"
+   * on a credential, every signed request matched against it is rejected
+   * unless it targets the configured `internalManagementRoute`.
+   */
+  purpose?: HmacCredentialPurpose;
 }
+
+/**
+ * v1.3.0: usage-scope marker stored alongside a credential. Optional on
+ * every public surface to preserve 1.2.x byte-identical behavior when the
+ * field is omitted.
+ *   - "any"               : default. The credential authenticates any
+ *                           signed request (1.2.x behavior).
+ *   - "propagation-only"  : the credential is only valid on the configured
+ *                           `internalManagementRoute`. Any other path
+ *                           rejected with HTTP 403 `PROPAGATION_ONLY_FORBIDDEN`.
+ *                           Message-store equivalents (signMessage /
+ *                           verifyMessage) refuse the credential outright.
+ */
+export type HmacCredentialPurpose = "any" | "propagation-only";
 
 export interface HmacCredentialRevertResult {
   reverted: boolean;
@@ -124,6 +179,13 @@ export interface InitializeHmacMessageAuthOptions {
    * Default 600s.
    */
   dbSeedBackupTtlSeconds?: number;
+  /**
+   * v1.3.0: mirror of the HTTP option. Until a credential with this exact
+   * clientId exists in the message store, both `signMessage` and
+   * `verifyMessage` throw HTTP 403 `BOOTSTRAP_LOCKED`. Default `undefined`
+   * keeps 1.2.x behavior unchanged.
+   */
+  requireBootstrapClientId?: string;
 }
 
 export interface VerifyHttpWithRedisInput {
@@ -152,6 +214,12 @@ export interface HmacClientCredential {
    * (false by default, true when stored as such on the record).
    */
   fromDbSeed?: boolean;
+  /**
+   * v1.3.0 usage-scope marker. Optional on the public type to keep
+   * 1.0.x/1.1.x/1.2.x literals type-valid. The lib populates the field
+   * when reading a record where it was stored ("any" implicit otherwise).
+   */
+  purpose?: HmacCredentialPurpose;
 }
 
 export interface HmacClientCredentialWithSecret extends HmacClientCredential {
@@ -172,6 +240,13 @@ export interface CreateHmacClientOptions {
    * 1.0.x/1.1.x behavior.
    */
   fromDbSeed?: boolean;
+  /**
+   * v1.3.0: tag the credential with a usage scope at creation time. The
+   * record stores the flag so subsequent `verifyHttpSignature` calls
+   * enforce the cantonment without re-reading any external source.
+   * Default `undefined` keeps 1.0.x/1.1.x/1.2.x record shape unchanged.
+   */
+  purpose?: HmacCredentialPurpose;
 }
 
 export interface RegenerateHmacSecretOptions {
@@ -262,6 +337,13 @@ export interface PropagateHmacClientOptions {
    * marker; reserved for future rotation/backup logic on db-seeded entries.
    */
   fromDbSeed?: boolean;
+  /**
+   * v1.3.0: propagate a usage-scope marker to the remote credential record.
+   * Emitted on the wire only when explicitly set (omitted = legacy 1.0.x
+   * payload bytes). The remote stores the value and enforces it on every
+   * subsequent signature verification.
+   */
+  purpose?: HmacCredentialPurpose;
 }
 
 export interface PropagateHmacClientResult {
