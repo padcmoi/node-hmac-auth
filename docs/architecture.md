@@ -130,6 +130,43 @@ The payload sent to the target carries `secretHash` (never `secret`). The target
 
 The bootstrap-then-auth rule on the internal-management route is unchanged: when target Redis has zero clients, the first POST is accepted without signature. Beyond that, the verifier in `server/verify.ts` runs to completion.
 
+## v1.3.0 additions
+
+Three strictly additive features layered on top of the v1.2.0 surface. Defaults reproduce v1.2.x byte-identical behavior; opt-in switches activate the new enforcement layers.
+
+### Feature 1 — credential cantonment via `purpose`
+
+- New type `HmacCredentialPurpose = "any" | "propagation-only"` exported from `src/index.ts`.
+- Optional `purpose?` added to every credential touch point: read shape (`HmacClientCredential`), create (`CreateHmacClientOptions`), write (`HmacCredentialWriteOptions`), wire (`PropagateHmacClientOptions`), persisted record (`StoredClientCredentialRecord`, legacy-tolerant parse).
+- Enforcement lives in `src/http/server/verify.ts`: after the signature compares and the nonce is consumed, the verifier checks the matched record's `purpose`. When it is `"propagation-only"` and the request path is not the configured `internalManagementRoute`, the verifier throws `PROPAGATION_ONLY_FORBIDDEN` (HTTP 403). The nonce burn before rejection denies retries in the same skew window.
+- On the message track (`src/message/init.ts`), credentials carrying `purpose: "propagation-only"` are refused on `signMessage` AND `verifyMessage` with the same error code. The message track has no path concept, so the cantonment is total.
+- Wire bytes-identical to 1.2.x when `purpose` is not set on the payload.
+
+### Feature 2 — bootstrap-window lock via `requireBootstrapClientId`
+
+- New option on `InitializeHmacHttpAuthOptions` and `InitializeHmacMessageAuthOptions`. `verifyHttpSignature` also accepts it explicitly via `VerifyHttpSignatureInput` for advanced consumers; the HTTP `init.ts` wrapper injects it from the init options on every call.
+- Enforcement on the HTTP track:
+  - `verifyHttpSignature` rejects every signed business request with `BOOTSTRAP_LOCKED` (HTTP 403) until a credential with the configured clientId is stored locally. The check fires before header parsing, so the response never leaks whether the inbound clientId is known.
+  - `handleInternalManagementRequest` keeps `GET` open (and surfaces `bootstrapLocked: boolean` in the body for orchestrators), accepts `POST` only for the named clientId, and refuses `PUT` / `PATCH` / `DELETE` with the same code while locked.
+- Enforcement on the message track: both `signMessage` and `verifyMessage` throw `BOOTSTRAP_LOCKED` until the named clientId is stored in the message credential store.
+- The lock auto-releases once the named credential exists; the check re-evaluates on every request, so a manual `DELETE` restores the lock.
+
+### Feature 3 — formal wire contract & test vectors
+
+- `docs/wire-contract.md` becomes the single source of truth for the wire (cryptographic primitives, headers, Redis layout, internal-management route shape, error codes, v1.3.0 additions). Cross-language ports (Python, Go, Rust, Java, ...) certify against this document.
+- `test/vectors/`:
+  - `hash-client-secret.json` — 20 deterministic cases of `hashClientSecret(secret, secretToken)`.
+  - `sign-request.json` — 33 deterministic cases of `signRequest({...})` covering all HTTP methods, varied paths and bodies, unicode and long inputs.
+  - `internal-route-flows.json` — 5 multi-step flows (bootstrap, duplicate refusal, update+revert, bootstrap-locked, propagation-only cantonment), each flagged with the minimum `level` (`v1.0.0` / `v1.2.0` / `v1.3.0`) required to honor it.
+- `test/wire-vectors.test.ts` loads every vector and asserts the lib still produces byte-identical output. Any drift is a wire break that fails CI.
+- Downstream packages (notably `@naskot/node-hmac-auth-management`) link to `docs/wire-contract.md` rather than re-documenting the wire.
+
+### Combined value
+
+F1 + F2 reinforce each other: declaring `requireBootstrapClientId` with `purpose: "propagation-only"` means even if the bootstrap credential leaks, an attacker can only push other auditable credentials with it. Business routes stay closed.
+
+F3 unlocks heterogeneous-language meshes: a target written in Python / Go / Rust passing every vector is certified wire-compatible at the declared level.
+
 ## Public API rule
 
 - Export public symbols only from `src/index.ts`.

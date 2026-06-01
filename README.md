@@ -14,6 +14,7 @@ Redis is mandatory.
 - Install, config, and usage guide (Express): [docs/express/README.md](./docs/express/README.md)
 - Install, config, and usage guide (NestJS): [docs/nestjs/README.md](./docs/nestjs/README.md)
 - Docker POC (Nest + Express + Redis, key propagation): [poc/README.md](./poc/README.md)
+- Wire contract (canonical spec for cross-language ports, v1.3.0+): [docs/wire-contract.md](./docs/wire-contract.md)
 - Changelog: [CHANGELOG.md](./CHANGELOG.md)
 
 ## Compatibility
@@ -65,6 +66,8 @@ SHA256(BODY)
   - `options.secretToken?`
   - `options.onBadSignature?(event)`
   - `options.internalManagementRoute?` (ex: `/api/internal/hmac`)
+  - `options.dbSeedBackupTtlSeconds?` (v1.2.0, default 600)
+  - `options.requireBootstrapClientId?` (v1.3.0; refuses every signed request and every non-named management write until the named clientId is stored — see [docs/wire-contract.md](./docs/wire-contract.md))
 
 `event` contains `clientId`, `method`, `path`, `timestamp`, `nonce`, `receivedSignature`, `expectedSignature`, `headers`, `rawBody`, and optional `metadata`.
 
@@ -73,6 +76,8 @@ SHA256(BODY)
   - `options.namespace?`
   - `options.defaultSecretLengthBytes?`
   - `options.secretToken?`
+  - `options.dbSeedBackupTtlSeconds?` (v1.2.0, default 600)
+  - `options.requireBootstrapClientId?` (v1.3.0; same semantics as the HTTP variant)
 
 ### Verify helpers
 
@@ -104,18 +109,22 @@ Enabled only when `internalManagementRoute` is configured.
 
 Route behavior for `internalManagementRoute`:
 
-- `GET`: healthcheck
+- `GET`: healthcheck (always open; v1.3.0+ also emits `bootstrapLocked` in the body)
 - `POST`: create/propagate client (`201` accepted, `403` refused)
 - `PUT`: update secret (`201` accepted, `403` refused)
+- `PATCH`: revert credential to the previous secretHash from the v1.2.0 TTL backup (`201` accepted, `403` refused)
 - `DELETE`: delete client (`201` accepted, `403` refused)
 
 Security rule:
 
 - If at least one client exists, route requires valid HMAC auth.
 - If no client exists yet, bootstrap creation is allowed (first key).
+- v1.3.0: when `requireBootstrapClientId` is set, only `POST` for the named clientId is accepted while locked; `PUT` / `PATCH` / `DELETE` and `POST` for any other clientId are refused with HTTP 403 `BOOTSTRAP_LOCKED`.
 
 ## Release notes
 
+- 1.3.0 — `purpose: "propagation-only"` credential cantonment + `requireBootstrapClientId` bootstrap-window lock + canonical wire contract & test vectors ([docs/release-notes/1.3.0.md](./docs/release-notes/1.3.0.md))
+- 1.2.0 — dynamic DB-seed origin marker, TTL backup, REVERT operation ([docs/release-notes/1.2.0.md](./docs/release-notes/1.2.0.md))
 - 1.1.1 — re-export `HmacPropagateTargetStore` + `HmacMessageAuthBridge` from the index (fix omitted in 1.1.0) ([docs/release-notes/1.1.1.md](./docs/release-notes/1.1.1.md))
 - 1.1.0 — propagation can also target the message credential store ([docs/release-notes/1.1.0.md](./docs/release-notes/1.1.0.md))
 - 1.0.0 — propagation: hash-on-the-wire + Redis fallback ([docs/release-notes/1.0.0.md](./docs/release-notes/1.0.0.md))

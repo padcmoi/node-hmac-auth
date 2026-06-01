@@ -4,6 +4,26 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [1.3.0] - 2026-06-01
+
+Minor release. Strictly additive on top of 1.2.x. 1.0.x/1.1.x/1.2.x consumers upgrade without code, wire, or Redis-layout change. Defaults reproduce 1.2.x byte-identical behavior; opt-in via the two new options below.
+
+- `feat(types): add HmacCredentialPurpose type ("any" | "propagation-only") + optional purpose field on HmacClientCredential, CreateHmacClientOptions, HmacCredentialWriteOptions, PropagateHmacClientOptions, StoredClientCredentialRecord (legacy-tolerant parse)`
+- `feat(types): InitializeHmacHttpAuthOptions and InitializeHmacMessageAuthOptions accept optional requireBootstrapClientId; VerifyHttpSignatureInput accepts optional internalManagementRoute + requireBootstrapClientId for the same enforcement layer`
+- `feat(http): verifyHttpSignature rejects requests matched against a credential whose stored purpose is "propagation-only" unless the path equals the configured internalManagementRoute; new error code PROPAGATION_ONLY_FORBIDDEN (HTTP 403)`
+- `feat(http): verifyHttpSignature rejects every signed business request with BOOTSTRAP_LOCKED (HTTP 403) until a credential with the configured requireBootstrapClientId is stored locally; handleInternalManagementRequest keeps GET open with bootstrapLocked: true in the body, accepts POST only for the named clientId, refuses PUT/PATCH/DELETE while locked`
+- `feat(http): propagateClientToApis emits an optional purpose field on the wire payload when explicitly set; wire bytes-identical to 1.2.x when omitted`
+- `feat(http): handleInternalManagementRequest parses an optional purpose field from POST/PUT bodies and persists it on the credential record so subsequent verify calls enforce the cantonment without any external lookup`
+- `feat(message): initializeHmacMessageAuth honors requireBootstrapClientId by throwing BOOTSTRAP_LOCKED on signMessage/verifyMessage until the named credential is stored; both methods also refuse credentials carrying purpose: "propagation-only" with PROPAGATION_ONLY_FORBIDDEN`
+- `feat(stores): credentials-clients-factory threads purpose through create / regenerateSecret / setSecret / setSecretHash / setAllowedIps / revert; mapCredential surfaces the field on every read path`
+- `docs(wire-contract): add docs/wire-contract.md as the single source of truth for the wire (cryptographic primitives, headers, Redis layout, internal management route shape, error codes, v1.3.0 additions). Cross-language ports certify against this document plus test/vectors/*.json`
+- `test(vectors): add test/vectors/hash-client-secret.json (20 cases), test/vectors/sign-request.json (33 cases), test/vectors/internal-route-flows.json (5 multi-step flows incl. bootstrap-locked + propagation-only); wire-vectors.test.ts loads them and asserts the lib still matches byte-identical`
+- `test(http+message): add http-purpose-cantonment.test.ts (5 cases), http-bootstrap-locked.test.ts (6 cases), message-purpose-bootstrap.test.ts (2 cases) covering F1 + F2 happy paths, error codes and 1.2.x backward-compat`
+- `demo(poc): nest_source runs runV1_3_0_Demo() at boot in an isolated Redis namespace; logs PASS/FAIL per assertion (GET bootstrapLocked, POST/PUT/PATCH/DELETE gating, bootstrap release, purpose cantonment on business vs management route, signMessage refusal)`
+- `docs(release-notes+architecture+readme): docs/release-notes/1.3.0.md (long-form), architecture.md gains a "v1.3.0 additions" section, README links to docs/wire-contract.md`
+- `docs(express+nestjs): update both consumer guides for v1.2.0 (PATCH revert, dbSeedBackupTtlSeconds, fromDbSeed, propagateClientToApis revert) and v1.3.0 (requireBootstrapClientId, purpose, BOOTSTRAP_LOCKED, PROPAGATION_ONLY_FORBIDDEN, bootstrapLocked GET body, propagate.revert in the complete shared service example) + link to docs/wire-contract.md`
+- `docs(diagrams): seq-bootstrap-lock.puml + seq-purpose-cantonment.puml (NEW) illustrate F1 and F2 end-to-end; architecture.puml, seq-propagation.puml, seq-propagation-message.puml, seq-signed-fetch.puml and seq-message.puml updated for the v1.3.0 enforcement layers (purpose? on the wire, BOOTSTRAP_LOCKED + PROPAGATION_ONLY_FORBIDDEN branches, bootstrapLocked on the health body); all PNGs regenerated`
+
 ## [1.2.0] - 2026-05-25
 
 - `feat(types): add optional fromDbSeed flag on PropagateHmacClientOptions, HmacClientCredential (optional on the public type for true 1.0.x/1.1.x type-level backward compatibility) and StoredClientCredentialRecord (passive origin marker, default false, omitted on the wire when not explicitly true)`

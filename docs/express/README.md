@@ -26,6 +26,8 @@ const hmacAuth = initializeHmacHttpAuth({
   maxSkewMs: 5 * 60 * 1000,
   defaultSecretLengthBytes: 32,
   secretToken: process.env.HMAC_SECRET_TOKEN, // strongly recommended
+  dbSeedBackupTtlSeconds: 600, // v1.2.0, TTL of credentials-backup keys; default 600
+  requireBootstrapClientId: "self_propagation_signer", // v1.3.0, optional - see §11
   onBadSignature: async (event) => {
     const meta = (event.metadata ?? {}) as {
       ip?: string;
@@ -62,6 +64,8 @@ if (!existing) {
     plainSecret: "superSharedSecret", // use a secure secret manager in real systems
     expiresAt: null, // optional
     allowedIps: ["195.7.8.9", "195.7.8.0/24"], // optional IP/CIDR allowlist for this clientId
+    fromDbSeed: false, // v1.2.0, opt-in marker for dynamic DB-seed origin (default false)
+    purpose: "any", // v1.3.0, "any" (default) or "propagation-only" - see §11
   });
 }
 ```
@@ -154,6 +158,8 @@ app.get("/public/call-peer-get", async (_req, res) => {
 - Bad signature -> `401`
 - Expired client secret -> `401`
 - Replayed nonce -> `401`
+- `BOOTSTRAP_LOCKED` (v1.3.0) -> `403` when `requireBootstrapClientId` is configured and the named credential is not yet stored
+- `PROPAGATION_ONLY_FORBIDDEN` (v1.3.0) -> `403` when the matched credential has `purpose: "propagation-only"` and the request path is not the configured `internalManagementRoute`
 
 Headers used by verifier:
 
@@ -163,6 +169,8 @@ Headers used by verifier:
 - `x-signature`
 
 Note: `createExpressHttpMiddleware()` is available as explicit Express middleware naming.
+
+The full wire specification (cryptographic primitives, payload shapes, every error code, certification test vectors) is in [docs/wire-contract.md](../wire-contract.md).
 
 ## 8) Sign and Verify Messages
 
@@ -208,12 +216,13 @@ app.use(hmacAuth.createInternalManagementMiddleware());
 
 Supported methods on `/api/internal/hmac`:
 
-- `GET`: healthcheck
+- `GET`: healthcheck (v1.3.0+ also exposes `bootstrapLocked: boolean` in the body)
 - `POST`: create/propagate a credential
 - `PUT`: update a credential secret
+- `PATCH` (v1.2.0): revert a credential to its previous `secretHash` from the TTL backup
 - `DELETE`: delete a credential
 
-For `POST` / `PUT` / `DELETE`, target APIs return:
+For `POST` / `PUT` / `PATCH` / `DELETE`, target APIs return:
 
 - `201` when accepted
 - `403` when refused
@@ -222,6 +231,7 @@ Security behavior:
 
 - If at least one client already exists in Redis, route requires valid HMAC auth.
 - If no client exists yet, first credential bootstrap is accepted without HMAC auth.
+- v1.3.0: when `requireBootstrapClientId` is set, only `POST` for the named clientId is accepted while the bootstrap-lock is active; `PUT` / `PATCH` / `DELETE` and any other `POST` are refused with HTTP 403 `BOOTSTRAP_LOCKED`.
 
 ### Propagate to one or many APIs
 
@@ -248,11 +258,71 @@ console.log(results);
 
 Behavior changes around `propagateClientToApis` are documented in the dedicated release notes:
 
+- 1.3.0 — optional `purpose` field on the wire payload, new `operation` semantics unchanged (still `create`/`update`/`delete`/`revert`/`health`); see [docs/release-notes/1.3.0.md](../release-notes/1.3.0.md).
+- 1.2.0 — new `operation: "revert"` (PATCH) restores the previous `secretHash` from the v1.2.0 TTL backup, and `fromDbSeed: true` on the payload activates that backup on rotation. See [docs/release-notes/1.2.0.md](../release-notes/1.2.0.md).
 - 1.1.1 — `HmacPropagateTargetStore` + `HmacMessageAuthBridge` are now re-exported from the package index (fix omitted in 1.1.0). See [docs/release-notes/1.1.1.md](../release-notes/1.1.1.md).
 - 1.1.0 — propagation can also target the message credential store via `targetStore: "message"` (optional `messageAuth` bridge in `initializeHmacHttpAuth`). See [docs/release-notes/1.1.0.md](../release-notes/1.1.0.md).
 - 1.0.0 — propagation transports the `secretHash` on the wire + Redis fallback when `secret`/`secretHash` are omitted. See [docs/release-notes/1.0.0.md](../release-notes/1.0.0.md).
 
-## 10) Complete Shared Service Example
+### Revert a rotation (v1.2.0)
+
+`clients.revert(clientId)` restores the previous `secretHash` from the local `credentials-backup:<clientId>` key (written automatically when a `fromDbSeed: true` rotation overwrites a record). Pair it with `propagateClientToApis({ operation: "revert", ... })` to roll back the same `clientId` on every target that already accepted the new hash.
+
+```ts
+const localRevert = await hmacAuth.clients.revert("bizClient");
+console.log(localRevert.reverted, localRevert.restoredSecretHash);
+
+const targetRevert = await hmacAuth.propagateClientToApis({
+  operation: "revert",
+  clientId: "bizClient",
+  targets: acceptedTargets,
+  apiFetch: signer,
+});
+```
+
+## 10) Bootstrap lock + propagation-only credentials (v1.3.0)
+
+Two opt-in hardenings designed to be combined when an API delegates its credential lifecycle to an orchestrator (e.g. [`@naskot/node-hmac-auth-management`](https://github.com/padcmoi/node-hmac-auth)). Both are off by default; setting them changes only the bootstrap window and the per-credential cantonment.
+
+```ts
+const hmacAuth = initializeHmacHttpAuth({
+  redis,
+  namespace: "my-api-prod",
+  secretToken: process.env.HMAC_SECRET_TOKEN,
+  internalManagementRoute: "/api/internal/hmac",
+  // F2 — lock the API until the named credential is stored locally:
+  requireBootstrapClientId: "self_propagation_signer",
+});
+
+// F1 — store a credential that can only sign management-route requests:
+await hmacAuth.clients.create({
+  clientId: "self_propagation_signer",
+  plainSecret: process.env.PROPAGATION_SECRET,
+  purpose: "propagation-only",
+});
+```
+
+While the bootstrap-lock is active:
+
+- `verifyHttpSignature` refuses every signed business request with HTTP 403 `BOOTSTRAP_LOCKED`.
+- `handleInternalManagementRequest` keeps `GET` open (and returns `bootstrapLocked: true` in the body so external orchestrators can detect the state), accepts `POST` only when `payload.clientId === requireBootstrapClientId`, and refuses `PUT`/`PATCH`/`DELETE` with `BOOTSTRAP_LOCKED`.
+
+After the named credential is stored:
+
+- The lock auto-releases. Subsequent requests behave exactly like v1.2.x.
+- Manually deleting the bootstrap credential re-locks the API on the next request, so an operator-driven restore is recoverable.
+
+When a credential carries `purpose: "propagation-only"`:
+
+- It can sign requests on the configured `internalManagementRoute` (typically used by an orchestrator to push other credentials).
+- Any signed request on a different path is refused with HTTP 403 `PROPAGATION_ONLY_FORBIDDEN`, even when the signature is otherwise valid.
+- On the message track, `signMessage` and `verifyMessage` refuse the credential outright with the same code (messages have no path concept).
+
+Combining both: declare the bootstrap credential with `purpose: "propagation-only"` and even if the secret leaks, the attacker can only push other (auditable) credentials. Business routes stay closed.
+
+The full wire specification (cryptographic primitives, header names, Redis layout, every error code, certification test vectors) is in [docs/wire-contract.md](../wire-contract.md).
+
+## 11) Complete Shared Service Example
 
 This service is framework-agnostic at code level
 
@@ -283,6 +353,8 @@ export const hmacAuth = initializeHmacHttpAuth({
   defaultSecretLengthBytes: 32,
   secretToken: process.env.HMAC_SECRET_TOKEN, // strongly recommended
   internalManagementRoute: process.env.INTERNAL_MANAGEMENT_ROUTE ?? "/api/internal/hmac-auth", // optional: clientId propagation between APIs
+  dbSeedBackupTtlSeconds: 600, // v1.2.0, TTL of credentials-backup keys; default 600
+  requireBootstrapClientId: process.env.HMAC_BOOTSTRAP_CLIENT_ID, // v1.3.0, optional (see §10)
   onBadSignature: async (event) => {
     const meta = (event.metadata ?? {}) as {
       ip?: string;
@@ -444,6 +516,26 @@ export const interApi = {
 
       const results = await hmacAuth.propagateClientToApis({
         operation: "delete",
+        targets: opts.targetApis,
+        clientId: opts.propagateClientId,
+        apiFetch: await createSignedFetchFromClientId(fetchWithClientId),
+      });
+
+      return results;
+    },
+
+    /**
+     * v1.2.0: revert a previously rotated credential on the target APIs that
+     * already accepted the new hash. Restores each target's previous
+     * secretHash from the TTL backup written automatically when the rotation
+     * was tagged `fromDbSeed: true`. Pair with `hmacAuth.clients.revert` on
+     * the source to keep the federation consistent.
+     */
+    revert: async (opts: PropagateServiceDeleteOptions) => {
+      const fetchWithClientId = opts.useClientId ? opts.useClientId : opts.propagateClientId;
+
+      const results = await hmacAuth.propagateClientToApis({
+        operation: "revert",
         targets: opts.targetApis,
         clientId: opts.propagateClientId,
         apiFetch: await createSignedFetchFromClientId(fetchWithClientId),
