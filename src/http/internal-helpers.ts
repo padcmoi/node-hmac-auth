@@ -54,6 +54,7 @@ export function mapCredential(clientId: string, record: StoredClientCredentialRe
     expiresAt: record.expiresAt,
     allowedIps: record.allowedIps,
     fromDbSeed: record.fromDbSeed,
+    purpose: record.purpose,
   };
 }
 
@@ -114,6 +115,19 @@ export function parseExpiresAtFromPayload(payload: Record<string, unknown>): num
     throw new Error("expiresAt must be a valid timestamp");
   }
   return numeric;
+}
+
+export function parsePurposeFromPayload(payload: Record<string, unknown>): "any" | "propagation-only" | undefined {
+  if (!("purpose" in payload)) {
+    return undefined;
+  }
+  const raw = payload.purpose;
+  if (raw === "any" || raw === "propagation-only") {
+    return raw;
+  }
+  // Unknown / missing value -> treat as no opinion (consistent with how
+  // 1.0.x/1.1.x/1.2.x targets ignore the field entirely).
+  return undefined;
 }
 
 export function parseAllowedIpsFromPayload(payload: Record<string, unknown>): string[] | undefined {

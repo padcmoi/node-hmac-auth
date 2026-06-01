@@ -13,7 +13,9 @@ export type HmacAuthErrorCode =
   | "BAD_SIGNATURE"
   | "REPLAYED_NONCE"
   | "INTERNAL_ROUTE_DISABLED"
-  | "INTERNAL_ERROR";
+  | "INTERNAL_ERROR"
+  | "PROPAGATION_ONLY_FORBIDDEN"
+  | "BOOTSTRAP_LOCKED";
 
 export class HmacAuthError extends Error {
   public readonly status: number;

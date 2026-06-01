@@ -146,6 +146,12 @@ export function createPropagateClientToApis(
         if (propagateOptions.fromDbSeed === true) {
           payload.fromDbSeed = true;
         }
+        // v1.3.0: usage-scope marker propagated to the remote credential
+        // record. Only emitted when explicitly set to keep the default wire
+        // bytes-identical to 1.0.x/1.1.x/1.2.x.
+        if (propagateOptions.purpose !== undefined) {
+          payload.purpose = propagateOptions.purpose;
+        }
       }
     }
 

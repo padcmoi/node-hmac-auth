@@ -109,6 +109,7 @@ function mapCredential(clientId: string, record: StoredClientCredentialRecord): 
     expiresAt: record.expiresAt,
     allowedIps: record.allowedIps,
     fromDbSeed: record.fromDbSeed,
+    purpose: record.purpose,
   };
 }
 
@@ -134,6 +135,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
         expiresAt: normalizeExpiresAt(createOptions.expiresAt),
         allowedIps: normalizeAllowedIpRules(createOptions.allowedIps),
         fromDbSeed: createOptions.fromDbSeed === true,
+        purpose: createOptions.purpose,
       };
 
       await credentialStore.setClientRecord(createOptions.clientId, record);
@@ -194,6 +196,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
             ? normalizeAllowedIpRules(regenerateOptions.allowedIps)
             : existing.allowedIps,
         fromDbSeed: existing.fromDbSeed,
+        purpose: existing.purpose,
       };
 
       await credentialStore.setClientRecord(clientId, updatedRecord);
@@ -223,6 +226,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
         expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
         allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
         fromDbSeed: writeOptions?.fromDbSeed ?? existing?.fromDbSeed ?? false,
+        purpose: writeOptions?.purpose ?? existing?.purpose,
       };
       await credentialStore.setClientRecord(clientId, record);
     },
@@ -242,6 +246,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
         expiresAt: expiresAt === undefined ? (existing?.expiresAt ?? null) : normalizeExpiresAt(expiresAt),
         allowedIps: allowedIps === undefined ? (existing?.allowedIps ?? []) : normalizeAllowedIpRules(allowedIps),
         fromDbSeed: writeOptions?.fromDbSeed ?? existing?.fromDbSeed ?? false,
+        purpose: writeOptions?.purpose ?? existing?.purpose,
       };
       await credentialStore.setClientRecord(clientId, record);
     },
@@ -261,6 +266,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
         expiresAt: existing.expiresAt ?? null,
         allowedIps: normalizeAllowedIpRules(allowedIps),
         fromDbSeed: existing.fromDbSeed,
+        purpose: existing.purpose,
       };
 
       await credentialStore.setClientRecord(clientId, record);
@@ -292,6 +298,7 @@ export function createCredentialsClientsFactory(deps: CreateCredentialsClientsFa
         expiresAt: existing.expiresAt ?? null,
         allowedIps: existing.allowedIps,
         fromDbSeed: existing.fromDbSeed,
+        purpose: existing.purpose,
       };
       await credentialStore.setClientRecord(clientId, record);
       await credentialStore.clearBackupSecretHash(clientId);

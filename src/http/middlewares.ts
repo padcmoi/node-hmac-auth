@@ -37,6 +37,10 @@ export interface CreateHttpMiddlewareFactoryDeps {
   namespace: string;
   maxSkewMs: number;
   defaultOnBadSignature?: OnBadHttpSignature;
+  /** v1.3.0: propagated to `verifyHttpSignature` for purpose cantonment. */
+  internalManagementRoute?: string;
+  /** v1.3.0: propagated to `verifyHttpSignature` for bootstrap-window lock. */
+  requireBootstrapClientId?: string;
 }
 
 export function createHttpMiddlewareFactory(
@@ -50,6 +54,8 @@ export function createHttpMiddlewareFactory(
       attachAuthTo: middlewareOptions?.attachAuthTo,
       onError: middlewareOptions?.onError,
       onBadSignature: middlewareOptions?.onBadSignature ?? deps.defaultOnBadSignature,
+      internalManagementRoute: deps.internalManagementRoute,
+      requireBootstrapClientId: deps.requireBootstrapClientId,
     });
 }
 

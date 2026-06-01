@@ -1,4 +1,5 @@
 import { sanitizeAllowedIpRules } from "../core/ip.js";
+import type { HmacCredentialPurpose } from "../core/types.js";
 
 /**
  * Serialized credential record stored under `<namespace>:clients[<clientId>]`.
@@ -13,10 +14,20 @@ export interface StoredClientCredentialRecord {
   expiresAt: number | null;
   allowedIps: string[];
   fromDbSeed: boolean;
+  /**
+   * v1.3.0: usage-scope marker. Optional on the stored record so 1.0.x
+   * through 1.2.x records (which never wrote this field) parse cleanly.
+   * Absent = "any" implicit (legacy behavior).
+   */
+  purpose?: HmacCredentialPurpose;
 }
 
 function isFiniteNumber(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value);
+}
+
+function parseStoredPurpose(value: unknown): HmacCredentialPurpose | undefined {
+  return value === "propagation-only" || value === "any" ? value : undefined;
 }
 
 export function parseStoredClientRecord(rawValue: string): StoredClientCredentialRecord {
@@ -30,6 +41,7 @@ export function parseStoredClientRecord(rawValue: string): StoredClientCredentia
         expiresAt: isFiniteNumber(parsed.expiresAt) ? parsed.expiresAt : null,
         allowedIps: sanitizeAllowedIpRules(parsed.allowedIps),
         fromDbSeed: parsed.fromDbSeed === true,
+        purpose: parseStoredPurpose(parsed.purpose),
       };
     }
   } catch {

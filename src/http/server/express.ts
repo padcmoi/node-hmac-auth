@@ -10,6 +10,10 @@ export interface ExpressHmacMiddlewareOptions {
   attachAuthTo?: string;
   onError?: (error: HmacAuthError, req: any, res: any, next: (error?: unknown) => void) => void;
   onBadSignature?: OnBadHttpSignature;
+  /** v1.3.0: passed through to `verifyHttpSignature` for purpose cantonment. */
+  internalManagementRoute?: string;
+  /** v1.3.0: passed through to `verifyHttpSignature` for bootstrap-window lock. */
+  requireBootstrapClientId?: string;
 }
 
 export type HttpHmacMiddlewareOptions = ExpressHmacMiddlewareOptions;
@@ -69,6 +73,8 @@ export function createExpressHttpHmacMiddleware(options: ExpressHmacMiddlewareOp
         maxSkewMs: options.maxSkewMs,
         onBadSignature: options.onBadSignature,
         metadata: fallbackMetadata(req),
+        internalManagementRoute: options.internalManagementRoute,
+        requireBootstrapClientId: options.requireBootstrapClientId,
       });
 
       req[attachAuthTo] = verified;

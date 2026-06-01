@@ -14,6 +14,7 @@ import {
   parseAllowedIpsFromPayload,
   parseExpiresAtFromPayload,
   parseInternalBody,
+  parsePurposeFromPayload,
 } from "./internal-helpers.js";
 
 /**
@@ -43,12 +44,35 @@ export interface CreateInternalManagementHandlerDeps {
   internalManagementRoute: string | undefined;
   namespace: string;
   verifyHttpSignature: (input: VerifyHttpWithRedisInput) => Promise<VerifiedHttpRequest>;
+  /**
+   * v1.3.0: when set, the handler enters bootstrap-locked mode until a
+   * credential with this exact clientId is stored locally. While locked:
+   *   - GET stays open and returns `bootstrapLocked: true` so orchestrators
+   *     can detect the state without leaking secrets.
+   *   - POST is accepted only when `payload.clientId` equals this value.
+   *   - PUT / PATCH / DELETE return 403 `BOOTSTRAP_LOCKED`.
+   * Once the named credential exists, the lock auto-releases and the
+   * handler behaves exactly like 1.2.x.
+   */
+  requireBootstrapClientId: string | undefined;
 }
 
 export function createInternalManagementHandler(
   deps: CreateInternalManagementHandlerDeps
 ): (input: HmacInternalManagementRequestInput) => Promise<HmacInternalManagementRequestResult> {
-  const { clients, messageAuth, internalManagementRoute, namespace, verifyHttpSignature } = deps;
+  const { clients, messageAuth, internalManagementRoute, namespace, verifyHttpSignature, requireBootstrapClientId } = deps;
+
+  function buildBootstrapLockedResponse(message: string): HmacInternalManagementRequestResult {
+    return {
+      handled: true,
+      status: 403,
+      body: {
+        error: "BOOTSTRAP_LOCKED",
+        message,
+      },
+      verifiedAuth: null,
+    };
+  }
 
   return async (input) => {
     if (!internalManagementRoute) {
@@ -87,6 +111,12 @@ export function createInternalManagementHandler(
     const knownClients = await clients.listClientIds();
     const authRequired = knownClients.length > 0;
 
+    // v1.3.0: bootstrap-window lock. The lock is active while a
+    // `requireBootstrapClientId` was configured AND the named credential
+    // is not yet stored locally. The flag drives both the GET probe
+    // response and the write-method gating below.
+    const bootstrapLocked = typeof requireBootstrapClientId === "string" && !knownClients.includes(requireBootstrapClientId);
+
     let verifiedAuth: VerifiedHttpRequest | null = null;
     if (authRequired) {
       try {
@@ -116,6 +146,7 @@ export function createInternalManagementHandler(
           authRequired,
           clientsCount: knownClients.length,
           authenticatedBy: verifiedAuth?.clientId ?? null,
+          bootstrapLocked,
         },
         verifiedAuth,
       };
@@ -125,6 +156,18 @@ export function createInternalManagementHandler(
     const payloadClientId = normalizeInternalClientId(payload.clientId);
     if (!payloadClientId) {
       return forbiddenInternal("clientId is required");
+    }
+
+    // v1.3.0: while bootstrap-locked, POST is allowed only for the named
+    // clientId itself (the bootstrap write). PUT / PATCH / DELETE are
+    // always refused, since none of them can store the required credential
+    // from scratch.
+    if (bootstrapLocked) {
+      if (method !== "POST" || payloadClientId !== requireBootstrapClientId) {
+        return buildBootstrapLockedResponse(
+          `API is locked until clientId '${requireBootstrapClientId}' is stored (only POST { clientId: '${requireBootstrapClientId}' } is accepted)`
+        );
+      }
     }
 
     if (method === "DELETE") {
@@ -194,7 +237,12 @@ export function createInternalManagementHandler(
     // v1.2.0: `fromDbSeed` marks the credential as originating from a dynamic
     // DB-seed pipeline. Omitted / falsy => static origin (default).
     const fromDbSeed = payload.fromDbSeed === true;
-    const writeOptions = { fromDbSeed };
+    // v1.3.0: optional `purpose` cantonment marker. Stored on the record so
+    // every subsequent `verifyHttpSignature` enforces it without re-reading
+    // any external source. Omitted on the payload => no change (legacy
+    // 1.0.x/1.1.x/1.2.x behavior).
+    const purpose = parsePurposeFromPayload(payload);
+    const writeOptions = { fromDbSeed, purpose };
 
     // v1.1.0: `kind` in the payload selects the target credential store on
     // the remote. Defaults to "http" to keep 1.0.x callers unchanged.

@@ -111,6 +111,10 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
   const messageAuth = options.messageAuth;
+  const requireBootstrapClientId =
+    typeof options.requireBootstrapClientId === "string" && options.requireBootstrapClientId.trim()
+      ? options.requireBootstrapClientId.trim()
+      : undefined;
 
   const verifyHttpSignature = async (input: VerifyHttpWithRedisInput): Promise<VerifiedHttpRequest> =>
     verifyHttpSignatureCore({
@@ -120,6 +124,8 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       maxSkewMs: input.maxSkewMs ?? maxSkewMs,
       onBadSignature: input.onBadSignature ?? options.onBadSignature,
       metadata: input.metadata,
+      internalManagementRoute,
+      requireBootstrapClientId,
     });
 
   const clients = createCredentialsClientsFactory({
@@ -134,6 +140,8 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     namespace,
     maxSkewMs,
     defaultOnBadSignature: options.onBadSignature,
+    internalManagementRoute,
+    requireBootstrapClientId,
   });
 
   const verifyHttpRequest = httpMiddlewareFactory();
@@ -144,6 +152,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
     internalManagementRoute,
     namespace,
     verifyHttpSignature,
+    requireBootstrapClientId,
   });
 
   const internalManagementMiddlewareFactory = createInternalManagementMiddlewareFactory({
