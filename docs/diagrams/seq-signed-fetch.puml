@@ -31,11 +31,28 @@ SignedFetch -> Target : fetch(url, {method, headers, body})
 
 == Target side: verify ==
 Target -> Mid : incoming request
-Mid -> Verify : verifyHttpSignature({method, path, headers, rawBody, redis, ...})
+Mid -> Verify : verifyHttpSignature({method, path, headers, rawBody, redis,\n  internalManagementRoute?, requireBootstrapClientId?, ...})
+
+note over Verify
+  v1.3.0: bootstrap-window lock fires here
+  BEFORE any header parsing. If
+  requireBootstrapClientId is configured AND
+  the named record is missing from local Redis,
+  every signed business request returns
+  BOOTSTRAP_LOCKED (403). The check does not
+  leak whether the inbound clientId is known.
+end note
+Verify -> RedisTgt : (v1.3.0) credentialStore.getClientRecord(\n  requireBootstrapClientId)
+RedisTgt --> Verify : record or null
+alt requireBootstrapClientId set AND record null
+  Verify -> Mid : throw BOOTSTRAP_LOCKED (403)
+  Mid -> Target : 403 JSON
+end
+
 Verify -> Verify : require x-client-id, x-signature, x-timestamp, x-nonce
 Verify -> Verify : abs(now - timestamp) <= maxSkewMs ?\n(else TIMESTAMP_SKEW)
 Verify -> RedisTgt : credentialStore.getClientRecord(clientId)
-RedisTgt --> Verify : {secretHash, allowedIps, expiresAt, ...}\nor null
+RedisTgt --> Verify : {secretHash, allowedIps, expiresAt, purpose?, ...}\nor null
 alt unknown clientId
   Verify -> Mid : throw UNKNOWN_CLIENT (401)
   Mid -> Target : 401 JSON
@@ -60,10 +77,23 @@ else match
   alt replay
     Verify -> Mid : throw REPLAYED_NONCE (401)
   else
-    Verify --> Mid : VerifiedHttpRequest{clientId, timestamp, nonce, signature}
-    Mid -> Target : req.hmacAuth = verified ; next()
-    Target --> Mid : 200 OK body
-    Mid --> Target : forward response
+    note over Verify
+      v1.3.0: purpose cantonment fires AFTER
+      the nonce is consumed (so a misuse cannot
+      retry inside the skew window).
+      record.purpose == "propagation-only" AND
+      path != internalManagementRoute -> throw
+      PROPAGATION_ONLY_FORBIDDEN (403).
+    end note
+    alt purpose=="propagation-only" AND path != internalManagementRoute
+      Verify -> Mid : throw PROPAGATION_ONLY_FORBIDDEN (403)
+      Mid -> Target : 403 JSON
+    else
+      Verify --> Mid : VerifiedHttpRequest{clientId, timestamp, nonce, signature}
+      Mid -> Target : req.hmacAuth = verified ; next()
+      Target --> Mid : 200 OK body
+      Mid --> Target : forward response
+    end
   end
 end
 

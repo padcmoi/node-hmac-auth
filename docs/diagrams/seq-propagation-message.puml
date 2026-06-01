@@ -36,11 +36,13 @@ end
 
 note right of Propagate
   Payload built:
-  { clientId, secretHash, allowedIps, kind: "message", fromDbSeed? }
+  { clientId, secretHash, allowedIps,
+    kind: "message", fromDbSeed?, purpose? }
 
   payload.secret is NEVER set.
   payload.kind is "message" (new in 1.1.0).
   payload.fromDbSeed only emitted when true (v1.2.0).
+  payload.purpose only emitted when set (v1.3.0).
 end note
 
 == Source: sign the propagation request itself (HTTP credential) ==
@@ -53,7 +55,7 @@ note over Signer
 end note
 
 == Target receives the POST ==
-Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: { clientId, secretHash, allowedIps, kind: "message", fromDbSeed? }
+Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: { clientId, secretHash, allowedIps, kind: "message", fromDbSeed?, purpose? }
 
 Target -> Handler : handleInternalManagementRequest(input)
 Handler -> RedisTgtHttp : clients.listClientIds()
@@ -100,6 +102,12 @@ note over RedisSrcMsg, RedisTgtMsg
   secretHash is byte-identical, so signatures
   verify even when source and target run with
   different HMAC_SECRET_TOKEN.
+
+  v1.3.0: when the stored message-store record
+  carries purpose="propagation-only", BOTH
+  signMessage and verifyMessage refuse it with
+  PROPAGATION_ONLY_FORBIDDEN (403). Messages
+  have no path concept; the cantonment is total.
 end note
 
 @enduml

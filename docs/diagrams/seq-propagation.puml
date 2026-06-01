@@ -1,5 +1,5 @@
 @startuml seq-propagation
-title Propagation v1.0.0 - hash on the wire + Redis fallback + bootstrap-then-auth
+title Propagation v1.0.0+ - hash on the wire + Redis fallback + bootstrap-then-auth (v1.2.0 fromDbSeed, v1.3.0 purpose)
 
 skinparam sequenceMessageAlign center
 skinparam shadowing false
@@ -45,7 +45,7 @@ note over Signer
 end note
 
 == Target receives the POST ==
-Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: {clientId, secretHash, allowedIps, fromDbSeed?, ...}\n(fromDbSeed only emitted when true; v1.2.0)
+Propagate -> Target : POST <target>/api/internal/hmac\nHeaders: x-client-id, x-timestamp, x-nonce, x-signature\nBody: {clientId, secretHash, allowedIps, fromDbSeed?, purpose?, ...}\n(fromDbSeed only emitted when true; v1.2.0)\n(purpose only emitted when set; v1.3.0)
 Target -> Handler : handleInternalManagementRequest(input)
 Handler -> RedisTgt : clients.listClientIds()
 RedisTgt --> Handler : knownClients
@@ -54,6 +54,12 @@ alt knownClients.length == 0  (bootstrap mode)
     First propagated client lands here.
     No HMAC verification - the route
     is "bootstrap-then-auth".
+
+    v1.3.0: when requireBootstrapClientId is
+    configured, the bootstrap POST is accepted
+    only when payload.clientId equals the
+    named clientId. Other clientIds -> 403
+    BOOTSTRAP_LOCKED (see seq-bootstrap-lock).
   end note
 else knownClients.length > 0  (auth required)
   Handler -> Verify : verifyHttpSignature(...)
@@ -64,6 +70,15 @@ else knownClients.length > 0  (auth required)
     Handler -> Target : 403 "Internal HMAC management\nauthentication failed"
     Target --> Propagate : 403 result\nresult.accepted = false
   end
+  note over Verify
+    v1.3.0: the propagation signer is typically
+    declared with purpose="propagation-only".
+    The signed request targets the management
+    route -> cantonment check passes. Any signed
+    request on a business path would throw
+    PROPAGATION_ONLY_FORBIDDEN (403) here
+    (see seq-purpose-cantonment).
+  end note
 end
 
 Handler -> RedisTgt : clients.get(payload.clientId)
@@ -73,13 +88,19 @@ alt clientId already exists
   Target --> Propagate : 403 result\n(treat as success when retrying)
 else not yet present
   RedisTgt --> Handler : null
-  Handler -> RedisTgt : clients.setSecretHash(clientId, payload.secretHash,\nexpiresAt, allowedIps)
+  Handler -> RedisTgt : clients.setSecretHash(clientId, payload.secretHash,\nexpiresAt, allowedIps, { fromDbSeed?, purpose? })
   note right of RedisTgt
     Hash stored AS-IS.
     No re-hash with the target's
     HMAC_SECRET_TOKEN.
     Source and target Redis now
     hold byte-identical hashes.
+
+    v1.3.0: when payload.purpose is set
+    ("propagation-only"), the value is
+    persisted on the record and enforced
+    by verifyHttpSignature on every
+    subsequent signed call.
   end note
   RedisTgt --> Handler : stored
   Handler -> Target : 201 "create accepted"

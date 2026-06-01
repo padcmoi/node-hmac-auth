@@ -79,7 +79,7 @@ Boot --> HttpInit : initializeHmacHttpAuth\n+ clients.create\n+ propagateClientT
 Boot --> MsgInit : initializeHmacMessageAuth
 
 ' --- propagation outward ---
-HttpInit ..> OtherApis : signed POST/PUT/DELETE/PATCH\n/api/internal/hmac\n(payload: secretHash + optional kind=message + optional fromDbSeed)
+HttpInit ..> OtherApis : signed POST/PUT/DELETE/PATCH\n/api/internal/hmac\n(payload: secretHash + optional kind=message\n+ optional fromDbSeed + optional purpose, v1.3.0)
 
 ' --- v1.1.0 bridge: HTTP init dispatches to message store ---
 HttpInit ..> MsgInit : v1.1.0 messageAuth bridge\n(dispatch payload.kind=="message"\nto setSecretHash on the message store)
@@ -88,19 +88,40 @@ HttpInit ..> MsgInit : v1.1.0 messageAuth bridge\n(dispatch payload.kind=="messa
 HttpInit ..> RedisBackup : v1.2.0\nsetSecret/setSecretHash with fromDbSeed:true\nauto-writes credentials-backup:{clientId} EX
 HttpInit ..> RedisBackup : v1.2.0\nclients.revert(clientId)\nrestores hash from backup, deletes key
 
+' --- v1.3.0 enforcement layers (purpose cantonment + bootstrap-window lock) ---
+Verify ..> RedisStore : v1.3.0\ncheck requireBootstrapClientId in clients hash;\nabsent -> throw BOOTSTRAP_LOCKED (403)
+Verify ..> Errors : v1.3.0\nrecord.purpose == "propagation-only"\nAND path != internalManagementRoute\n-> throw PROPAGATION_ONLY_FORBIDDEN (403)
+MsgInit ..> Errors : v1.3.0\nsignMessage / verifyMessage\nrefuse propagation-only credentials\n+ enforce requireBootstrapClientId
+
 note bottom of HttpInit
   Internal management route
   bootstrap-then-auth:
   - Redis empty -> first POST accepted without signature
   - Otherwise -> HMAC signature required
   PATCH (v1.2.0) dispatches to clients.revert.
+  v1.3.0: when requireBootstrapClientId is set,
+  GET stays open with bootstrapLocked: true,
+  POST accepted only for the named clientId,
+  PUT/PATCH/DELETE -> 403 BOOTSTRAP_LOCKED
+  until the named credential is stored.
 end note
 
 note right of Redis
   Shared by HTTP + message
   via distinct namespaces
   (e.g. tenant-hmac
-  vs tenant-hmac-messages)
+  vs tenant-hmac-messages).
+  Credential record (v1.3.0) gains
+  optional purpose field; absent
+  records remain valid.
+end note
+
+note left of Errors
+  v1.3.0 added codes:
+  - BOOTSTRAP_LOCKED (403)
+  - PROPAGATION_ONLY_FORBIDDEN (403)
+  Full spec + test vectors in
+  docs/wire-contract.md.
 end note
 
 @enduml

@@ -1,0 +1,72 @@
+@startuml seq-purpose-cantonment
+title Purpose cantonment v1.3.0 - propagation-only credential refused outside the management route
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Caller code" as App
+participant "createHttpSignedFetchClient\n(signer)" as Signer
+participant "buildHttpSignedHeaders" as Build
+participant "signRequest" as SignReq
+collections "Target API" as Target
+participant "verifyHttpSignature" as Verify
+participant "nonceStore" as Nonce
+database "Redis (target)" as Redis
+
+note over Target
+  Target initialized with
+  internalManagementRoute: "/api/internal/hmac".
+  Credential "self_propagation_signer" was
+  previously stored with purpose:"propagation-only".
+end note
+
+== Case A: signed call on the internal management route -> accepted ==
+App -> Signer : signed POST /api/internal/hmac\n(propagate another credential)
+Signer -> Build : build headers
+Build -> SignReq : signRequest
+SignReq --> Build : signature
+Build --> Signer : Headers{x-client-id,x-timestamp,x-nonce,x-signature}
+Signer -> Target : POST /api/internal/hmac
+Target -> Verify : verifyHttpSignature({\n  internalManagementRoute:"/api/internal/hmac",\n  ...})
+Verify -> Redis : credentialStore.getClientRecord(\n  "self_propagation_signer")
+Redis --> Verify : { secretHash, purpose:"propagation-only", ... }
+Verify -> Verify : signature compares (constant-time)
+Verify -> Nonce : consume(clientId:nonce:timestamp)
+Nonce --> Verify : ok
+Verify -> Verify : record.purpose == "propagation-only"\n&& normalizeRoutePath(path) == internalManagementRoute\n-> PASS
+Verify --> Target : VerifiedHttpRequest
+Target --> App : 201 propagation accepted
+
+== Case B: signed call on a business route -> refused ==
+App -> Signer : signed POST /secure/widgets\n(business payload)
+Signer -> Build : build headers
+Build -> SignReq : signRequest
+SignReq --> Build : signature
+Signer -> Target : POST /secure/widgets
+Target -> Verify : verifyHttpSignature(...)
+Verify -> Redis : credentialStore.getClientRecord(\n  "self_propagation_signer")
+Redis --> Verify : { secretHash, purpose:"propagation-only", ... }
+Verify -> Verify : signature compares OK
+Verify -> Nonce : consume(clientId:nonce:timestamp)
+Nonce --> Verify : ok (nonce is burnt)
+note right of Verify
+  Nonce consumed BEFORE the cantonment check
+  so a misuse attempt cannot retry inside the
+  skew window with a different path.
+end note
+Verify -> Verify : record.purpose == "propagation-only"\n&& path != internalManagementRoute\n-> FAIL
+Verify -> Target : throw PROPAGATION_ONLY_FORBIDDEN (403)
+Target --> App : 403 {error:"PROPAGATION_ONLY_FORBIDDEN",\n  message:"... restricted to the internal management route"}
+
+== Case C: message track refuses propagation-only credentials outright ==
+note over Target, Redis
+  Message store has no path concept.
+  hmacMessageAuth.signMessage and
+  hmacMessageAuth.verifyMessage refuse
+  any record carrying
+  purpose:"propagation-only" with
+  PROPAGATION_ONLY_FORBIDDEN (403),
+  before any signature work.
+end note
+
+@enduml

@@ -20,6 +20,16 @@ database "Redis (consumer)" as RedisC
 
 == Producer: sign ==
 Producer -> SignApi : signMessage({ clientId, message })
+note over SignApi
+  v1.3.0: bootstrap-window lock fires first.
+  If requireBootstrapClientId is configured
+  on initializeHmacMessageAuth AND the named
+  message-store record is missing, every call
+  throws BOOTSTRAP_LOCKED (403).
+end note
+alt requireBootstrapClientId set AND record null
+  SignApi -> Producer : throw BOOTSTRAP_LOCKED (403)
+end
 SignApi -> RedisP : credentialStore.getClientRecord(clientId)
 alt unknown
   RedisP --> SignApi : null
@@ -27,7 +37,16 @@ alt unknown
 else expired
   SignApi -> Producer : throw CLIENT_EXPIRED
 else found
-  RedisP --> SignApi : {secretHash, expiresAt, ...}
+  RedisP --> SignApi : {secretHash, expiresAt, purpose?, ...}
+end
+note over SignApi
+  v1.3.0: messages have no path concept,
+  so any record with purpose="propagation-only"
+  is refused outright (signMessage AND
+  verifyMessage) with PROPAGATION_ONLY_FORBIDDEN (403).
+end note
+alt record.purpose == "propagation-only"
+  SignApi -> Producer : throw PROPAGATION_ONLY_FORBIDDEN (403)
 end
 SignApi -> SignCore : signMessage({ clientId, message,\n  secret = secretHash, secretIsHashed: true })
 SignCore -> Canon : toMessageString(message)\n(deep sort keys for stable JSON.stringify)
@@ -49,6 +68,14 @@ end note
 == Consumer: verify ==
 Broker -> Consumer : deliver message
 Consumer -> VerifyApi : verifyMessage({ clientId, message, signature })
+note over VerifyApi
+  v1.3.0: same bootstrap-window lock check
+  applies here when configured on
+  initializeHmacMessageAuth.
+end note
+alt requireBootstrapClientId set AND record null
+  VerifyApi -> Consumer : throw BOOTSTRAP_LOCKED (403)
+end
 VerifyApi -> RedisC : credentialStore.getClientRecord(clientId)
 alt unknown
   RedisC --> VerifyApi : null
@@ -56,7 +83,10 @@ alt unknown
 else expired
   VerifyApi -> Consumer : throw CLIENT_EXPIRED
 end
-RedisC --> VerifyApi : {secretHash, ...}
+RedisC --> VerifyApi : {secretHash, purpose?, ...}
+alt record.purpose == "propagation-only"
+  VerifyApi -> Consumer : throw PROPAGATION_ONLY_FORBIDDEN (403)
+end
 VerifyApi -> VerifyCore : verifyMessage({ ..., secret = secretHash, secretIsHashed: true })
 VerifyCore -> Canon : toMessageString(message)
 Canon --> VerifyCore : canonical string\n(identical to producer's because of deep-sort)

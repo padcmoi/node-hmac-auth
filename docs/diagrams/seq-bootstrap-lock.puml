@@ -1,0 +1,94 @@
+@startuml seq-bootstrap-lock
+title Bootstrap-window lock v1.3.0 - requireBootstrapClientId end-to-end
+
+skinparam sequenceMessageAlign center
+skinparam shadowing false
+
+actor "Orchestrator\n(e.g. management lib)" as App
+participant "Source signer\n(signed-fetch / unsigned bootstrap)" as Signer
+collections "Target API\n/api/internal/hmac" as Target
+participant "handleInternalManagementRequest" as Handler
+participant "verifyHttpSignature" as Verify
+database "Redis (target)" as RedisTgt
+
+note over Target
+  Target initialized with
+  initializeHmacHttpAuth({
+    requireBootstrapClientId: "self_propagation_signer",
+    internalManagementRoute: "/api/internal/hmac",
+    ...
+  }).
+end note
+
+== Phase A: orchestrator probes the locked target ==
+App -> Signer : unsigned GET /api/internal/hmac
+Signer -> Target : GET /api/internal/hmac
+Target -> Handler : handleInternalManagementRequest({method:"GET",...})
+Handler -> RedisTgt : clients.listClientIds()
+RedisTgt --> Handler : [] (empty)
+Handler -> Handler : bootstrapLocked =\nrequireBootstrapClientId !== undefined\n&& !knownClients.includes(requireBootstrapClientId)
+note right of Handler
+  GET stays open at all times so external
+  orchestrators can detect the locked state
+  without parsing error responses.
+end note
+Handler --> Target : 200 {ok, clientsCount:0,\n  authRequired:false, bootstrapLocked:true, ...}
+Target --> App : 200 health body shows bootstrapLocked:true
+
+== Phase B: hostile / mis-targeted POST during the lock ==
+App -> Signer : unsigned POST /api/internal/hmac\n{clientId:"intruder", secret:"evil"}
+Signer -> Target : POST /api/internal/hmac
+Target -> Handler : handleInternalManagementRequest
+Handler -> RedisTgt : clients.listClientIds()
+RedisTgt --> Handler : [] (empty)
+Handler -> Handler : bootstrapLocked = true
+note right of Handler
+  While locked: POST is accepted ONLY for
+  payload.clientId === requireBootstrapClientId.
+  Any other clientId returns 403 BOOTSTRAP_LOCKED.
+end note
+Handler --> Target : 403 {error:"BOOTSTRAP_LOCKED",\n  message:"API is locked until ..."}
+Target --> App : 403 BOOTSTRAP_LOCKED
+
+== Phase C: PUT / PATCH / DELETE refused while locked ==
+App -> Signer : signed PUT / PATCH / DELETE /api/internal/hmac
+Signer -> Target : PUT / PATCH / DELETE /api/internal/hmac
+Target -> Handler : handleInternalManagementRequest
+Handler -> Handler : bootstrapLocked = true\n&& method != "POST"
+Handler --> Target : 403 BOOTSTRAP_LOCKED
+Target --> App : 403 BOOTSTRAP_LOCKED
+
+== Phase D: lock release via the named clientId ==
+App -> Signer : unsigned POST /api/internal/hmac\n{clientId:"self_propagation_signer",\n  secret:"<plain>",\n  purpose:"propagation-only",\n  allowedIps:[]}
+Signer -> Target : POST /api/internal/hmac
+Target -> Handler : handleInternalManagementRequest
+Handler -> RedisTgt : clients.listClientIds()
+RedisTgt --> Handler : [] (still empty)
+Handler -> Handler : bootstrapLocked = true\n&& method == "POST"\n&& payloadClientId == requireBootstrapClientId\n-> allowed
+Handler -> RedisTgt : clients.setSecret(clientId, secret, ...,\n  {purpose:"propagation-only"})
+RedisTgt --> Handler : stored
+Handler --> Target : 201 {ok, operation:"create",\n  clientId:"self_propagation_signer", kind:"http"}
+Target --> App : 201 created
+
+== Phase E: business requests now succeed ==
+App -> Signer : signed business request /secure/widgets\n(signed by another credential, not the propagation key)
+Signer -> Target : signed request
+Target -> Verify : verifyHttpSignature(...)
+Verify -> RedisTgt : credentialStore.getClientRecord(\n  requireBootstrapClientId)
+RedisTgt --> Verify : record (lock released)
+note over Verify
+  Lock re-checked on every verify call,
+  so an operator-driven DELETE of the
+  bootstrap credential re-locks the API
+  on the next request.
+end note
+Verify --> Target : VerifiedHttpRequest
+Target --> App : 200 business response
+
+note over RedisTgt
+  GET probe NOW returns:
+  { authRequired:true, clientsCount:1,
+    bootstrapLocked:false }
+end note
+
+@enduml
