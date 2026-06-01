@@ -67,8 +67,14 @@ This POC torture-tests every public surface of the lib. Each row references the 
 | `setAllowedIps` then `clients.get` reflects update                  | 1.0.x   | `runClientsManagementTortureSuite`           | `[nest_source] torture: setAllowedIps <id> stored=[...]`                                                            |
 | `clients.delete` then `clients.get` returns null                    | 1.0.x   | `runClientsManagementTortureSuite`           | `[nest_source] torture: delete-local <id> after-get=null`                                                           |
 | `revert` preserves `fromDbSeed/allowedIps/expiresAt`                | 1.2.0   | `runFieldPreservationTortureSuite`           | `[nest_source] torture: revert-preserves fromDbSeed=true allowedIps=[...] expiresAt=...`                            |
+| `requireBootstrapClientId` lock + release                           | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS bootstrap POST stores the named credential and releases the lock`                               |
+| `bootstrapLocked` exposed on GET health body                        | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS GET reports bootstrapLocked=true while locked`                                                  |
+| `BOOTSTRAP_LOCKED` on PUT / PATCH / DELETE while locked             | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS PUT refused with BOOTSTRAP_LOCKED while locked`                                                 |
+| `purpose: "propagation-only"` accepted on management route          | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS verifyHttpSignature accepts propagation-only on the management route`                           |
+| `PROPAGATION_ONLY_FORBIDDEN` on business route                      | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS verifyHttpSignature rejects propagation-only on a business route`                               |
+| `PROPAGATION_ONLY_FORBIDDEN` on signMessage                         | 1.3.0   | `runV1_3_0_Demo`                             | `[v1.3.0-demo] PASS signMessage rejects propagation-only credential`                                                |
 
-Every torture step logs both its action and the assertion outcome. A failing assertion produces a line prefixed with `torture FAIL`. A green run shows zero `torture FAIL` lines.
+Every torture step logs both its action and the assertion outcome. A failing assertion produces a line prefixed with `torture FAIL`. The v1.3.0 demo runs in an isolated Redis namespace after the legacy suite; a green run shows zero `torture FAIL` lines and `[v1.3.0-demo] summary ok=8/8`.
 
 ## Run
 
