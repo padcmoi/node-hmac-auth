@@ -1,0 +1,196 @@
+{
+  "description": "Multi-step flows exercised on the internal management route. Each flow is an ordered array of steps. A step describes a single HTTP call: verb + payload (when applicable) + expected status + expected response body (a subset; the verifier asserts each declared key matches). Targets MUST reproduce every flow with the listed expected status / body to be considered wire-compatible at the declared 'level'. Lines marked 'level' say the minimum upstream version that supports the step; targets pinned to lower versions skip flows above their level.",
+  "flows": [
+    {
+      "name": "bootstrap-then-propagate",
+      "level": "v1.0.0",
+      "description": "First POST on an empty target stores the bootstrap clientId without signature. Then GET reports clientsCount=1. A second POST signed by the bootstrap clientId stores a data-plane client.",
+      "steps": [
+        {
+          "verb": "GET",
+          "path": "/api/internal/hmac",
+          "expectedStatus": 200,
+          "expectedBody": {
+            "ok": true,
+            "authRequired": false,
+            "clientsCount": 0
+          }
+        },
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "body": { "clientId": "bootstrap_client", "secret": "bootstrap_secret" },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "create",
+            "clientId": "bootstrap_client"
+          }
+        },
+        {
+          "verb": "GET",
+          "path": "/api/internal/hmac",
+          "expectedStatus": 200,
+          "expectedBody": {
+            "ok": true,
+            "authRequired": true,
+            "clientsCount": 1
+          }
+        },
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "signedBy": "bootstrap_client",
+          "body": {
+            "clientId": "data_plane_alpha",
+            "secretHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
+            "allowedIps": []
+          },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "create",
+            "clientId": "data_plane_alpha"
+          }
+        }
+      ]
+    },
+    {
+      "name": "duplicate-create-rejected",
+      "level": "v1.0.0",
+      "description": "POSTing a clientId that already exists returns 403.",
+      "steps": [
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "signedBy": "bootstrap_client",
+          "body": {
+            "clientId": "data_plane_alpha",
+            "secretHash": "abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789",
+            "allowedIps": []
+          },
+          "expectedStatus": 403,
+          "expectedBody": { "error": "FORBIDDEN", "message": "Client already exists" }
+        }
+      ]
+    },
+    {
+      "name": "update-then-revert",
+      "level": "v1.2.0",
+      "description": "PUT rotates the stored secretHash on a fromDbSeed credential; a PATCH then restores the previous secretHash from the TTL backup.",
+      "steps": [
+        {
+          "verb": "PUT",
+          "path": "/api/internal/hmac",
+          "signedBy": "bootstrap_client",
+          "body": {
+            "clientId": "data_plane_alpha",
+            "secretHash": "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210",
+            "allowedIps": [],
+            "fromDbSeed": true
+          },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "update",
+            "clientId": "data_plane_alpha"
+          }
+        },
+        {
+          "verb": "PATCH",
+          "path": "/api/internal/hmac",
+          "signedBy": "bootstrap_client",
+          "body": { "clientId": "data_plane_alpha" },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "revert",
+            "clientId": "data_plane_alpha",
+            "reverted": true
+          }
+        }
+      ]
+    },
+    {
+      "name": "bootstrap-locked-rejects-wrong-clientId",
+      "level": "v1.3.0",
+      "description": "Targets initialized with requireBootstrapClientId='self_propagation_signer' refuse every POST whose clientId is not 'self_propagation_signer' until the named credential exists. GET stays open and reports bootstrapLocked=true.",
+      "steps": [
+        {
+          "verb": "GET",
+          "path": "/api/internal/hmac",
+          "expectedStatus": 200,
+          "expectedBody": {
+            "ok": true,
+            "clientsCount": 0,
+            "bootstrapLocked": true
+          }
+        },
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "body": { "clientId": "intruder", "secret": "anything" },
+          "expectedStatus": 403,
+          "expectedBody": { "error": "BOOTSTRAP_LOCKED" }
+        },
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "body": {
+            "clientId": "self_propagation_signer",
+            "secretHash": "1111111111111111111111111111111111111111111111111111111111111111",
+            "allowedIps": [],
+            "purpose": "propagation-only"
+          },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "create",
+            "clientId": "self_propagation_signer"
+          }
+        },
+        {
+          "verb": "GET",
+          "path": "/api/internal/hmac",
+          "expectedStatus": 200,
+          "expectedBody": {
+            "ok": true,
+            "clientsCount": 1,
+            "bootstrapLocked": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "propagation-only-cantonment",
+      "level": "v1.3.0",
+      "description": "A credential stored with purpose='propagation-only' can sign requests on /api/internal/hmac (used to propagate other clients), but signed requests on any other route are rejected with 403 PROPAGATION_ONLY_FORBIDDEN.",
+      "steps": [
+        {
+          "verb": "POST",
+          "path": "/api/internal/hmac",
+          "signedBy": "self_propagation_signer",
+          "body": {
+            "clientId": "data_plane_beta",
+            "secretHash": "2222222222222222222222222222222222222222222222222222222222222222",
+            "allowedIps": []
+          },
+          "expectedStatus": 201,
+          "expectedBody": {
+            "ok": true,
+            "operation": "create",
+            "clientId": "data_plane_beta"
+          }
+        },
+        {
+          "verb": "POST",
+          "path": "/api/business/widgets",
+          "signedBy": "self_propagation_signer",
+          "body": { "anything": "the signature is valid but path is not the management route" },
+          "expectedStatus": 403,
+          "expectedBody": { "error": "PROPAGATION_ONLY_FORBIDDEN" }
+        }
+      ]
+    }
+  ]
+}

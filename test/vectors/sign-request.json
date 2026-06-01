@@ -1,0 +1,336 @@
+{
+  "description": "Test vectors for signRequest({method, path, timestamp, nonce, body, secret}). The signed payload is METHOD\\nPATH\\nTIMESTAMP\\nNONCE\\nSHA256(body) where SHA256 is hex lowercase. The signature is HMAC-SHA256(secret, payload) hex lowercase. The 'secret' field is the value the verifier holds (typically the secretHash). Targets MUST produce expectedHex byte-for-byte.",
+  "generator": "node:crypto",
+  "cases": [
+    {
+      "id": "sign-01",
+      "method": "GET",
+      "path": "/",
+      "timestamp": 1700000000000,
+      "nonce": "nonce-0000",
+      "body": "",
+      "secret": "short",
+      "expectedHex": "6284486c0c99fb828e285ef8cdec1d875c5635ef43c88c96f4d424a438c7c26d"
+    },
+    {
+      "id": "sign-02",
+      "method": "GET",
+      "path": "/",
+      "timestamp": 1700000001000,
+      "nonce": "nonce-0001",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "8a930892d695094567cf2d021362f600f1b1f134d0fc59215df774111462dc2e"
+    },
+    {
+      "id": "sign-03",
+      "method": "GET",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000002000,
+      "nonce": "nonce-0002",
+      "body": "",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "2415570717e85d26a628937bff050db830f9704c346eee2c1e75a385ececff6e"
+    },
+    {
+      "id": "sign-04",
+      "method": "GET",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000003000,
+      "nonce": "nonce-0003",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "short",
+      "expectedHex": "45d77e68afc8e51faef6bdd70551bcc0347eaef6518460d8ce1cd1d9f423036d"
+    },
+    {
+      "id": "sign-05",
+      "method": "GET",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000004000,
+      "nonce": "nonce-0004",
+      "body": "",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "96fa2cd137104510c7b634b5064c83afb6a45d6c4044bc3b9c03a1a61afab6a6"
+    },
+    {
+      "id": "sign-06",
+      "method": "GET",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000005000,
+      "nonce": "nonce-0005",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "efb8b4c10a9ab379f80354b005bc93ba60a4e8a3207de15198cea31f5a78cad0"
+    },
+    {
+      "id": "sign-07",
+      "method": "POST",
+      "path": "/",
+      "timestamp": 1700000006000,
+      "nonce": "nonce-0006",
+      "body": "",
+      "secret": "short",
+      "expectedHex": "529440f88af53c1d078f16836403ab22b98be4a346a8d1381137d421303915d1"
+    },
+    {
+      "id": "sign-08",
+      "method": "POST",
+      "path": "/",
+      "timestamp": 1700000007000,
+      "nonce": "nonce-0007",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "7410d4ff9b628977b08730f1a6b8418bf7d163221b94f356cd2d7dfcad583cb7"
+    },
+    {
+      "id": "sign-09",
+      "method": "POST",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000008000,
+      "nonce": "nonce-0008",
+      "body": "",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "76b11d9a849af275b3423cdf6c5c6cb872520b99483cd248e0b20aa1a1fc399c"
+    },
+    {
+      "id": "sign-10",
+      "method": "POST",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000009000,
+      "nonce": "nonce-0009",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "short",
+      "expectedHex": "8a4aa77f7ad742c8bef84f3c1b7c3264146da73fc7a7fb53a6517d18499d1d2e"
+    },
+    {
+      "id": "sign-11",
+      "method": "POST",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000010000,
+      "nonce": "nonce-0010",
+      "body": "",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "d47cd2781c436d1de06a1ce78e93fecd497fd1e02fcf6d9cca62d5bf7ff03663"
+    },
+    {
+      "id": "sign-12",
+      "method": "POST",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000011000,
+      "nonce": "nonce-0011",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "7f93c9c80586aa164215c04a2bdebbdfdaf26687dbc51bd3144e19ddb0bd2214"
+    },
+    {
+      "id": "sign-13",
+      "method": "PUT",
+      "path": "/",
+      "timestamp": 1700000012000,
+      "nonce": "nonce-0012",
+      "body": "",
+      "secret": "short",
+      "expectedHex": "9ae7490b8c5c2998b47683f7ab11ee2efc1c80d2d95f099222a63a12e9f4fa4d"
+    },
+    {
+      "id": "sign-14",
+      "method": "PUT",
+      "path": "/",
+      "timestamp": 1700000013000,
+      "nonce": "nonce-0013",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "e62061c0ad48e271761b917957b2c45486ffb2adc00ad621d775c7fdf88c8713"
+    },
+    {
+      "id": "sign-15",
+      "method": "PUT",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000014000,
+      "nonce": "nonce-0014",
+      "body": "",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "1ecbc1f9909b899aa0f41d58e11907c8016d1ecdf31a84d602c881ecccf52594"
+    },
+    {
+      "id": "sign-16",
+      "method": "PUT",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000015000,
+      "nonce": "nonce-0015",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "short",
+      "expectedHex": "b1b12a0261e070f269665a65977365284a7b8dd6d4c2529f0ad7ab89c13d49b6"
+    },
+    {
+      "id": "sign-17",
+      "method": "PUT",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000016000,
+      "nonce": "nonce-0016",
+      "body": "",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "9ec2165174b740de74c91417f44a4adafd3f4aa7206ff3fd63f09ee298209fdb"
+    },
+    {
+      "id": "sign-18",
+      "method": "PUT",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000017000,
+      "nonce": "nonce-0017",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "3af0e867b03ebf0b5884f51a5f89a03727575b624355dc613d1e312ca9e3451f"
+    },
+    {
+      "id": "sign-19",
+      "method": "PATCH",
+      "path": "/",
+      "timestamp": 1700000018000,
+      "nonce": "nonce-0018",
+      "body": "",
+      "secret": "short",
+      "expectedHex": "98419cd61aee070d29e8c80af89f302d62dfc24dba3bff5969bba7e946ca73f7"
+    },
+    {
+      "id": "sign-20",
+      "method": "PATCH",
+      "path": "/",
+      "timestamp": 1700000019000,
+      "nonce": "nonce-0019",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "808c1b856be4b6be77c6a9f114e20016fd2a854360fdaae597743fa27fad4285"
+    },
+    {
+      "id": "sign-21",
+      "method": "PATCH",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000020000,
+      "nonce": "nonce-0020",
+      "body": "",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "4c99096c3f35bf583d2e5565a8482625bd73bc9a67fe47cc7ec6973b37de5139"
+    },
+    {
+      "id": "sign-22",
+      "method": "PATCH",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000021000,
+      "nonce": "nonce-0021",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "short",
+      "expectedHex": "3987975e276965ab85181e7e6e55f911c6472e874fbb5a2a03c5b064ebe8ebd3"
+    },
+    {
+      "id": "sign-23",
+      "method": "PATCH",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000022000,
+      "nonce": "nonce-0022",
+      "body": "",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "502997a3fe7b436ae0bf52be06e3a44ad14d2fe055bbbc4f23e85c2bfa122c81"
+    },
+    {
+      "id": "sign-24",
+      "method": "PATCH",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000023000,
+      "nonce": "nonce-0023",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "0961c0906d2ebaa418b7943bd6e24ab2b0f02fc34d8d70cfad862ef9780c25b8"
+    },
+    {
+      "id": "sign-25",
+      "method": "DELETE",
+      "path": "/",
+      "timestamp": 1700000024000,
+      "nonce": "nonce-0024",
+      "body": "",
+      "secret": "short",
+      "expectedHex": "0a655a8fa7bd0cf0bfa25fbf82672e64056181a59fc1a08df33e246de913ab22"
+    },
+    {
+      "id": "sign-26",
+      "method": "DELETE",
+      "path": "/",
+      "timestamp": 1700000025000,
+      "nonce": "nonce-0025",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "9939b41381160e5a7047b2e0480cdfcd03ce85edc6e4a3015d00661ab0e80e6a"
+    },
+    {
+      "id": "sign-27",
+      "method": "DELETE",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000026000,
+      "nonce": "nonce-0026",
+      "body": "",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "b1e368b8f35e88514967a71cb38dc716d7ebb6fd224ed0c564d416658583bd19"
+    },
+    {
+      "id": "sign-28",
+      "method": "DELETE",
+      "path": "/api/v1/widgets",
+      "timestamp": 1700000027000,
+      "nonce": "nonce-0027",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "short",
+      "expectedHex": "8e550e7ad26f302681a8ed4a0bd0f84d3eb83be46c6c9c522a144bb23024e0f5"
+    },
+    {
+      "id": "sign-29",
+      "method": "DELETE",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000028000,
+      "nonce": "nonce-0028",
+      "body": "",
+      "secret": "0123456789abcdef0123456789abcdef",
+      "expectedHex": "e04bf85656baf9664b63f9bbc3769791a7b9479bbfbdde7407c492aebb953b59"
+    },
+    {
+      "id": "sign-30",
+      "method": "DELETE",
+      "path": "/api/v1/widgets?limit=10",
+      "timestamp": 1700000029000,
+      "nonce": "nonce-0029",
+      "body": "{\"hello\":\"world\"}",
+      "secret": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+      "expectedHex": "bd9b1ae539033ea87e2fd6ac3a3b91f6dc9617076cbe226bec0ee22cb7b62ef1"
+    },
+    {
+      "id": "sign-31",
+      "method": "POST",
+      "path": "/long/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/abc/",
+      "timestamp": 1700000000000,
+      "nonce": "long-path-nonce",
+      "body": "",
+      "secret": "secret",
+      "expectedHex": "563a2efeba43ccf0e512be40efb9f96df8d5fb37382167e6fa4a30d4e7f33794"
+    },
+    {
+      "id": "sign-32",
+      "method": "POST",
+      "path": "/api/unicode",
+      "timestamp": 1700000000000,
+      "nonce": "unicode-nonce",
+      "body": "{\"msg\":\"hello-éàü-日本-🔐\"}",
+      "secret": "secret",
+      "expectedHex": "969e8867ddabfbf6d683d9a9e51a72005dcf1efcbe00902664091cadd66c8063"
+    },
+    {
+      "id": "sign-33",
+      "method": "PUT",
+      "path": "/api/v1/widgets/42",
+      "timestamp": 1700000050000,
+      "nonce": "put-nonce-42",
+      "body": "{\"name\":\"updated\",\"values\":[1,2,3,4,5]}",
+      "secret": "rotating-secret",
+      "expectedHex": "f15730aa2c878ac378fca863b6f2365251ad38fa888859a67f965e386f684c30"
+    }
+  ]
+}
