@@ -95,6 +95,18 @@ app.set("trust proxy", true);
 // keeps JSON body parsing for routes such as /api/internal/hmac.
 app.useBodyParser("json");
 
+// IMPORTANT: even with `rawBody: true`, body-less verbs (GET, DELETE,
+// sometimes PATCH) leave `req.rawBody` undefined. The lib's middleware
+// then falls back to `req.body` (which the JSON parser sets to `{}` for
+// any application/json-typed request) and signs
+// `JSON.stringify({}) === "{}"` server-side while the client signed
+// `""`. The result is a spurious BAD_SIGNATURE. Force an empty Buffer
+// so both sides agree on `hash("")`.
+app.use((req: any, _res: any, next: any) => {
+  if (!req.rawBody) req.rawBody = Buffer.alloc(0);
+  next();
+});
+
 app.use("/secure", hmacAuth.verifyHttpRequest);
 app.use(hmacAuth.createInternalManagementMiddleware());
 ```
