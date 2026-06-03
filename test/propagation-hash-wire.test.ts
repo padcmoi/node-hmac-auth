@@ -20,6 +20,7 @@ describe("HMAC auth - propagation - hash on the wire (v1.0.0)", () => {
       secretToken: "tenant_specific_pepper",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const fetchMock = vi.fn(
       async (_url: RequestInfo | URL, _init?: RequestInit) =>
@@ -57,6 +58,7 @@ describe("HMAC auth - propagation - hash on the wire (v1.0.0)", () => {
       secretToken: "tenant_specific_pepper",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     // Seed the local Redis: clientId exists locally (e.g. via internalCredentials)
     const seeded = await auth.clients.create({
@@ -98,6 +100,7 @@ describe("HMAC auth - propagation - hash on the wire (v1.0.0)", () => {
       internalManagementRoute: "/api/internal/hmac",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await expect(
       auth.propagateClientToApis({
@@ -119,6 +122,7 @@ describe("HMAC auth - propagation - hash on the wire (v1.0.0)", () => {
       secretToken: "tenant_specific_pepper",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     // Local record exists with hash A
     await auth.clients.create({

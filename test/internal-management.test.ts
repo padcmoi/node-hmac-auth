@@ -19,15 +19,15 @@ describe("HMAC auth - internal management", () => {
       path: route,
       headers: {},
       rawBody: JSON.stringify({
-        clientId: "bootstrap_client",
-        secret: "bootstrap_secret",
+        clientId: "self_propagation_signer",
+        secret: "prop_secret_internal",
       }),
       now: Date.now(),
     });
 
     expect(bootstrapCreate.handled).toBe(true);
     expect(bootstrapCreate.status).toBe(201);
-    expect((await auth.clients.get("bootstrap_client"))?.clientId).toBe("bootstrap_client");
+    expect((await auth.clients.get("self_propagation_signer"))?.clientId).toBe("self_propagation_signer");
 
     const unauthorizedCreate = await auth.handleInternalManagementRequest({
       method: "POST",
@@ -54,8 +54,8 @@ describe("HMAC auth - internal management", () => {
         method: "POST",
         url: route,
         body: authorizedBody,
-        clientId: "bootstrap_client",
-        secret: "bootstrap_secret",
+        clientId: "self_propagation_signer",
+        secret: "prop_secret_internal",
         timestamp: Date.now(),
         nonce: "nonce_internal_create_1",
       })
@@ -85,8 +85,8 @@ describe("HMAC auth - internal management", () => {
         method: "PUT",
         url: route,
         body: updateBody,
-        clientId: "bootstrap_client",
-        secret: "bootstrap_secret",
+        clientId: "self_propagation_signer",
+        secret: "prop_secret_internal",
         timestamp: Date.now(),
         nonce: "nonce_internal_update_1",
       })

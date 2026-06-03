@@ -13,6 +13,7 @@ describe("HMAC auth - HTTP verify - secret policies (expiration + secretToken)",
   it("returns 401 when client secret is expired", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_expired", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("exp_client", "secret_a", Date.now() - 1000);
 
     const timestamp = Date.now();
@@ -39,12 +40,8 @@ describe("HMAC auth - HTTP verify - secret policies (expiration + secretToken)",
 
   it("supports secretToken for deterministic tokenized secret hashes", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_tokenized",
-      maxSkewMs: 5000,
-      secretToken: "abc",
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_tokenized", maxSkewMs: 5000, secretToken: "abc" });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const first = await auth.clients.create({
       clientId: "client_a",
@@ -62,12 +59,8 @@ describe("HMAC auth - HTTP verify - secret policies (expiration + secretToken)",
 
   it("verifies tokenized signatures only when using the same secretToken", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_token_verify",
-      maxSkewMs: 5000,
-      secretToken: "abc",
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_token_verify", maxSkewMs: 5000, secretToken: "abc" });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();

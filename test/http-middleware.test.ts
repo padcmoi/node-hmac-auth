@@ -6,6 +6,7 @@ describe("HMAC auth - HTTP middleware", () => {
   it("supports verifyHttpRequest as middleware and keeps middleware aliases", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_middleware", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("app_a", "secret_a");
 
     const makeRes = () => {

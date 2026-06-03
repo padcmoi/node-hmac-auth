@@ -3,17 +3,13 @@ import { buildHttpSignedHeaders, initializeHmacHttpAuth } from "../src/index.js"
 import { FakeRedis, headersToRecord } from "./helpers/test-utils.js";
 
 /**
- * v1.3.0 Feature 2: requireBootstrapClientId lock.
- *
- * While the named credential is missing from the local store:
- *   - verifyHttpSignature rejects every signed business request with
- *     BOOTSTRAP_LOCKED (HTTP 403).
- *   - handleInternalManagementRequest accepts only POST whose clientId equals
- *     the named bootstrap clientId; every other write returns BOOTSTRAP_LOCKED.
- *   - GET stays open and reports bootstrapLocked: true.
- * Once the named credential is stored, the lock releases.
+ * v1.4.0 (security): the bootstrap-window lock is always active. When the
+ * caller omits `requireBootstrapClientId` the lib resolves it to the
+ * federation-default `DEFAULT_PROPAGATION_KEY_CLIENT_ID`, so there is no
+ * way to ship an unlocked store. The pre-1.4.0 "no lock" branch is gone;
+ * the suite below covers the lock-then-unlock lifecycle that replaces it.
  */
-describe("HMAC auth - v1.3.0 - requireBootstrapClientId", () => {
+describe("HMAC auth - v1.4.0 - bootstrap-window lock (federation default)", () => {
   const route = "/api/internal/hmac";
   const propagationClientId = "self_propagation_signer";
 
@@ -24,7 +20,6 @@ describe("HMAC auth - v1.3.0 - requireBootstrapClientId", () => {
       namespace: "tenant_bootstrap",
       internalManagementRoute: route,
       maxSkewMs: 5000,
-      requireBootstrapClientId: propagationClientId,
     });
     return auth;
   }
@@ -55,9 +50,6 @@ describe("HMAC auth - v1.3.0 - requireBootstrapClientId", () => {
     });
     expect(bootstrapPost.status).toBe(201);
 
-    // After the bootstrap write, authRequired flips to true. GET probes must
-    // be signed by the bootstrap clientId from now on. Build a signed GET
-    // and verify the body now reports bootstrapLocked: false.
     const timestamp = Date.now();
     const signedGetHeaders = buildHttpSignedHeaders({
       method: "GET",
@@ -113,9 +105,6 @@ describe("HMAC auth - v1.3.0 - requireBootstrapClientId", () => {
   it("refuses signed business requests with BOOTSTRAP_LOCKED while locked", async () => {
     const auth = buildAuth();
     await auth.clients.setSecret("data_plane_alpha", "alpha_secret");
-    // Even with the data-plane credential present, the lock is on the
-    // propagation key. Until propagationClientId is stored, ANY verify call
-    // throws BOOTSTRAP_LOCKED.
 
     const timestamp = Date.now();
     const headers = buildHttpSignedHeaders({
@@ -165,33 +154,5 @@ describe("HMAC auth - v1.3.0 - requireBootstrapClientId", () => {
       now: timestamp,
     });
     expect(verified.clientId).toBe("data_plane_alpha");
-  });
-
-  it("does not affect APIs that did not opt-in (1.2.x behavior preserved)", async () => {
-    const redis = new FakeRedis();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_no_bootstrap",
-      internalManagementRoute: route,
-      maxSkewMs: 5000,
-    });
-
-    const lockedHealth = await auth.handleInternalManagementRequest({
-      method: "GET",
-      path: route,
-      headers: {},
-      rawBody: "",
-      now: Date.now(),
-    });
-    expect(lockedHealth.body).toMatchObject({ bootstrapLocked: false });
-
-    const anyBootstrap = await auth.handleInternalManagementRequest({
-      method: "POST",
-      path: route,
-      headers: {},
-      rawBody: JSON.stringify({ clientId: "any_first_client", secret: "x" }),
-      now: Date.now(),
-    });
-    expect(anyBootstrap.status).toBe(201);
   });
 });

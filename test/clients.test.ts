@@ -6,6 +6,7 @@ describe("HMAC auth - clients", () => {
   it("supports client helpers create/list/delete/regenerate", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_admin", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const created = await auth.clients.create({
       clientId: "client_admin",
@@ -34,6 +35,7 @@ describe("HMAC auth - clients", () => {
   it("supports create with provided plainSecret and deterministic hash", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_plain_secret", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const first = await auth.clients.create({
       clientId: "client_a",
@@ -55,6 +57,7 @@ describe("HMAC auth - clients", () => {
   it("rejects create when plainSecret is empty", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_empty_secret", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await expect(
       auth.clients.create({
@@ -67,6 +70,7 @@ describe("HMAC auth - clients", () => {
   it("supports regenerateSecret with provided plainSecret", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_regen_plain_secret", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await auth.clients.create({
       clientId: "client_regen",
@@ -85,6 +89,7 @@ describe("HMAC auth - clients", () => {
   it("supports allowedIps lifecycle on client credentials", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_allowed_ips_lifecycle", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const created = await auth.clients.create({
       clientId: "client_allowed_ips",
@@ -111,6 +116,7 @@ describe("HMAC auth - clients", () => {
   it("keeps random regeneration when plainSecret is not provided", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_regen_random", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await auth.clients.create({
       clientId: "client_regen_random",

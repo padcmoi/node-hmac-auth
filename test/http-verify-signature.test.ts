@@ -9,11 +9,8 @@ import { FakeRedis, headersToRecord } from "./helpers/test-utils.js";
 describe("HMAC auth - HTTP verify - signature core", () => {
   it("verifies a valid signed request with redis-backed secrets", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_a",
-      maxSkewMs: 5000,
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_a", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
@@ -45,6 +42,7 @@ describe("HMAC auth - HTTP verify - signature core", () => {
   it("rejects replayed nonce", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_a", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
@@ -82,6 +80,7 @@ describe("HMAC auth - HTTP verify - signature core", () => {
   it("returns 401 when clientId is missing", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_b", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("app_a", "secret_a");
 
     const timestamp = Date.now();
@@ -113,6 +112,7 @@ describe("HMAC auth - HTTP verify - signature core", () => {
   it("returns 401 for unknown client or wrong secret", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_c", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("known_client", "server_secret");
 
     const timestamp = Date.now();
@@ -160,12 +160,8 @@ describe("HMAC auth - HTTP verify - signature core", () => {
   it("triggers onBadSignature callback before BAD_SIGNATURE", async () => {
     const redis = new FakeRedis();
     const onBadSignature = vi.fn();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_callback",
-      maxSkewMs: 5000,
-      onBadSignature,
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_callback", maxSkewMs: 5000, onBadSignature });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("known_client", "server_secret");
 
     const timestamp = Date.now();
@@ -211,12 +207,8 @@ describe("HMAC auth - HTTP verify - signature core", () => {
       throw new Error("callback failure");
     });
 
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_callback_error",
-      maxSkewMs: 5000,
-      onBadSignature,
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_callback_error", maxSkewMs: 5000, onBadSignature });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await auth.clients.setSecret("known_client", "server_secret");
 
     const timestamp = Date.now();

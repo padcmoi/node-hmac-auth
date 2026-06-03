@@ -12,6 +12,7 @@ describe("HMAC auth - HTTP verify - allowedIps allowlist", () => {
   it("supports client IP/CIDR allowlist on verify", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_ip_allowlist", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await auth.clients.create({
       clientId: "ip_locked_client",
@@ -74,6 +75,7 @@ describe("HMAC auth - HTTP verify - allowedIps allowlist", () => {
   it("rejects allowlisted clients when request IP is missing", async () => {
     const redis = new FakeRedis();
     const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_ip_required", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await auth.clients.create({
       clientId: "ip_required_client",

@@ -11,6 +11,7 @@ describe("HMAC auth - propagation - core (multi-API, validation, route gating)",
       internalManagementRoute: "/api/internal/hmac",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const fetchMock = vi.fn(async (url: RequestInfo | URL, _init?: RequestInit) => {
       const asString = String(url);
@@ -58,6 +59,7 @@ describe("HMAC auth - propagation - core (multi-API, validation, route gating)",
       internalManagementRoute: "/api/internal/hmac",
       maxSkewMs: 5000,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await expect(
       auth.propagateClientToApis({
@@ -80,11 +82,8 @@ describe("HMAC auth - propagation - core (multi-API, validation, route gating)",
 
   it("rejects propagation when internal management route is disabled", async () => {
     const redis = new FakeRedis();
-    const auth = initializeHmacHttpAuth({
-      redis,
-      namespace: "tenant_no_internal_route",
-      maxSkewMs: 5000,
-    });
+    const auth = initializeHmacHttpAuth({ redis, namespace: "tenant_no_internal_route", maxSkewMs: 5000 });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await expect(
       auth.propagateClientToApis({
