@@ -46,11 +46,9 @@ export interface VerifyHttpSignatureInput {
    */
   internalManagementRoute?: string;
   /**
-   * v1.3.0: when set, every signed request is rejected with HTTP 403
-   * `BOOTSTRAP_LOCKED` until a credential with this exact clientId exists in
-   * the local Redis credential store. Used by `initializeHmacHttpAuth` to
-   * gate business routes behind the initial bootstrap of the propagation
-   * key. When omitted, no lock is enforced.
+   * v1.4.0: passed through by `initializeHmacHttpAuth` so direct callers of
+   * `verifyHttpSignature` use the same enforcement layer. Defaults to
+   * `DEFAULT_PROPAGATION_KEY_CLIENT_ID` when omitted, never to "no lock".
    */
   requireBootstrapClientId?: string;
 }
@@ -73,20 +71,13 @@ export interface InitializeHmacHttpAuthOptions {
   onBadSignature?: OnBadHttpSignature;
   internalManagementRoute?: string;
   /**
-   * v1.3.0: name of the clientId that MUST be the first credential stored on
-   * this API instance. Until a credential with this exact clientId exists in
-   * the local Redis credential store:
-   *   - `verifyHttpSignature` rejects every signed business request with
-   *     HTTP 403 `BOOTSTRAP_LOCKED`.
-   *   - `handleInternalManagementRequest` accepts only `POST` payloads whose
-   *     `clientId` equals this value (the bootstrap of the named credential
-   *     itself); every other write returns 403 `BOOTSTRAP_LOCKED`.
-   *   - `GET` health probes stay open so external orchestrators (e.g.
-   *     `@naskot/node-hmac-auth-management`) can observe `bootstrapLocked`
-   *     and push the right credential first.
-   * Once the named credential is stored, the lock auto-releases and the
-   * API behaves exactly like 1.2.x. Default `undefined` keeps the
-   * pre-v1.3.0 bootstrap-window behavior unchanged.
+   * v1.4.0: the bootstrap lock is ALWAYS active. This field lets a consumer
+   * override the canonical name (`DEFAULT_PROPAGATION_KEY_CLIENT_ID = "self_propagation_signer"`)
+   * when they intentionally want their store isolated from the federation:
+   * because the management lib only pushes the canonical name, an API that
+   * locks behind a different value refuses every credential the federation
+   * tries to deliver. Default (omit the field) = the federation-friendly
+   * canonical name.
    */
   requireBootstrapClientId?: string;
   /**
@@ -180,10 +171,8 @@ export interface InitializeHmacMessageAuthOptions {
    */
   dbSeedBackupTtlSeconds?: number;
   /**
-   * v1.3.0: mirror of the HTTP option. Until a credential with this exact
-   * clientId exists in the message store, both `signMessage` and
-   * `verifyMessage` throw HTTP 403 `BOOTSTRAP_LOCKED`. Default `undefined`
-   * keeps 1.2.x behavior unchanged.
+   * v1.4.0: same federation-isolation override as the HTTP track. Defaults
+   * to `DEFAULT_PROPAGATION_KEY_CLIENT_ID` when omitted.
    */
   requireBootstrapClientId?: string;
 }
@@ -197,6 +186,12 @@ export interface VerifyHttpWithRedisInput {
   maxSkewMs?: number;
   onBadSignature?: OnBadHttpSignature;
   metadata?: unknown;
+  /**
+   * v1.4.0: lets the `auth.verifyHttpSignature` caller override the
+   * federation-default bootstrap clientId for this specific verify call.
+   * Omit to inherit the value resolved by `initializeHmacHttpAuth`.
+   */
+  requireBootstrapClientId?: string;
 }
 
 export interface HmacClientCredential {
