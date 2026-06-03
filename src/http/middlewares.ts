@@ -39,7 +39,10 @@ export interface CreateHttpMiddlewareFactoryDeps {
   defaultOnBadSignature?: OnBadHttpSignature;
   /** v1.3.0: propagated to `verifyHttpSignature` for purpose cantonment. */
   internalManagementRoute?: string;
-  /** v1.3.0: propagated to `verifyHttpSignature` for bootstrap-window lock. */
+  /**
+   * v1.4.0: federation-default bootstrap clientId. Omit to inherit the
+   * canonical `DEFAULT_PROPAGATION_KEY_CLIENT_ID`.
+   */
   requireBootstrapClientId?: string;
 }
 

@@ -12,7 +12,10 @@ export interface ExpressHmacMiddlewareOptions {
   onBadSignature?: OnBadHttpSignature;
   /** v1.3.0: passed through to `verifyHttpSignature` for purpose cantonment. */
   internalManagementRoute?: string;
-  /** v1.3.0: passed through to `verifyHttpSignature` for bootstrap-window lock. */
+  /**
+   * v1.4.0: federation-default bootstrap clientId. Omit to inherit the
+   * canonical `DEFAULT_PROPAGATION_KEY_CLIENT_ID`; override to isolate.
+   */
   requireBootstrapClientId?: string;
 }
 

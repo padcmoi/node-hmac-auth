@@ -51,10 +51,11 @@ export interface CreateInternalManagementHandlerDeps {
    *     can detect the state without leaking secrets.
    *   - POST is accepted only when `payload.clientId` equals this value.
    *   - PUT / PATCH / DELETE return 403 `BOOTSTRAP_LOCKED`.
-   * Once the named credential exists, the lock auto-releases and the
-   * handler behaves exactly like 1.2.x.
+   * v1.4.0: defaults to `DEFAULT_PROPAGATION_KEY_CLIENT_ID` when init.ts
+   * resolves the option; a custom value isolates the API from the
+   * federation (the mgmt lib only pushes the canonical name).
    */
-  requireBootstrapClientId: string | undefined;
+  requireBootstrapClientId: string;
 }
 
 export function createInternalManagementHandler(
@@ -111,11 +112,10 @@ export function createInternalManagementHandler(
     const knownClients = await clients.listClientIds();
     const authRequired = knownClients.length > 0;
 
-    // v1.3.0: bootstrap-window lock. The lock is active while a
-    // `requireBootstrapClientId` was configured AND the named credential
-    // is not yet stored locally. The flag drives both the GET probe
-    // response and the write-method gating below.
-    const bootstrapLocked = typeof requireBootstrapClientId === "string" && !knownClients.includes(requireBootstrapClientId);
+    // v1.4.0: bootstrap-window lock on the protocol-frozen propagation key.
+    // The flag drives both the GET probe response and the write-method
+    // gating below.
+    const bootstrapLocked = !knownClients.includes(requireBootstrapClientId);
 
     let verifiedAuth: VerifiedHttpRequest | null = null;
     if (authRequired) {

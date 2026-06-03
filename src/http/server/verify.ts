@@ -4,6 +4,7 @@ import { extractClientIp, isClientIpAllowed } from "../../core/ip.js";
 import type { BadHttpSignatureEvent, VerifiedHttpRequest, VerifyHttpSignatureInput } from "../../core/types.js";
 import { getHeader, normalizePath, toBodyString } from "../../core/utils.js";
 import { RedisCredentialStore, RedisNonceStore, assertRedisClient, resolveNamespace } from "../../stores/redis.js";
+import { DEFAULT_PROPAGATION_KEY_CLIENT_ID } from "../constants.js";
 import { normalizeRoutePath } from "../internal-helpers.js";
 
 const DEFAULT_MAX_SKEW_MS = 5 * 60 * 1000;
@@ -27,19 +28,19 @@ export async function verifyHttpSignature(input: VerifyHttpSignatureInput): Prom
   const credentialStore = new RedisCredentialStore(input.redis, namespace);
   const nonceStore = new RedisNonceStore(input.redis, namespace);
 
-  // v1.3.0: bootstrap-window lock. When the API was initialized with
-  // `requireBootstrapClientId`, every signed business request is refused
-  // until the named credential is stored locally. The check fires before
-  // any header parsing so the response does not leak whether the inbound
-  // clientId is known or not.
-  if (input.requireBootstrapClientId) {
-    const bootstrapRecord = await credentialStore.getClientRecord(input.requireBootstrapClientId);
+  // v1.4.0: unconditional bootstrap-window lock. The clientId resolves to
+  // the federation-default `DEFAULT_PROPAGATION_KEY_CLIENT_ID` unless the
+  // caller deliberately overrode it. The check fires before any header
+  // parsing so the response does not leak whether the inbound clientId is
+  // known or not.
+  {
+    const bootstrapClientId =
+      typeof input.requireBootstrapClientId === "string" && input.requireBootstrapClientId.trim()
+        ? input.requireBootstrapClientId.trim()
+        : DEFAULT_PROPAGATION_KEY_CLIENT_ID;
+    const bootstrapRecord = await credentialStore.getClientRecord(bootstrapClientId);
     if (!bootstrapRecord) {
-      throw new HmacAuthError(
-        "BOOTSTRAP_LOCKED",
-        `API is locked until clientId '${input.requireBootstrapClientId}' is stored`,
-        403
-      );
+      throw new HmacAuthError("BOOTSTRAP_LOCKED", `API is locked until clientId '${bootstrapClientId}' is stored`, 403);
     }
   }
 
