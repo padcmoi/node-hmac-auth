@@ -27,7 +27,7 @@ const hmacAuth = initializeHmacHttpAuth({
   defaultSecretLengthBytes: 32,
   secretToken: process.env.HMAC_SECRET_TOKEN, // strongly recommended
   dbSeedBackupTtlSeconds: 600, // v1.2.0, TTL of credentials-backup keys; default 600
-  requireBootstrapClientId: "self_propagation_signer", // v1.3.0, optional - see §11
+  requireBootstrapClientId: "self_propagation_signer", // since v1.4.0 defaults to "self_propagation_signer" if omitted - see §11
   onBadSignature: async (event) => {
     const meta = (event.metadata ?? {}) as {
       ip?: string;
@@ -158,7 +158,7 @@ app.get("/public/call-peer-get", async (_req, res) => {
 - Bad signature -> `401`
 - Expired client secret -> `401`
 - Replayed nonce -> `401`
-- `BOOTSTRAP_LOCKED` (v1.3.0) -> `403` when `requireBootstrapClientId` is configured and the named credential is not yet stored
+- `BOOTSTRAP_LOCKED` (v1.3.0) -> `403` while the bootstrap-window lock is active (resolved clientId not yet stored locally; default `self_propagation_signer` since v1.4.0)
 - `PROPAGATION_ONLY_FORBIDDEN` (v1.3.0) -> `403` when the matched credential has `purpose: "propagation-only"` and the request path is not the configured `internalManagementRoute`
 
 Headers used by verifier:
@@ -216,7 +216,7 @@ app.use(hmacAuth.createInternalManagementMiddleware());
 
 Supported methods on `/api/internal/hmac`:
 
-- `GET`: healthcheck (v1.3.0+ also exposes `bootstrapLocked: boolean` in the body)
+- `GET`: healthcheck (the body always exposes `bootstrapLocked: boolean` so orchestrators can drive the unlock without parsing errors)
 - `POST`: create/propagate a credential
 - `PUT`: update a credential secret
 - `PATCH` (v1.2.0): revert a credential to its previous `secretHash` from the TTL backup
@@ -231,7 +231,7 @@ Security behavior:
 
 - If at least one client already exists in Redis, route requires valid HMAC auth.
 - If no client exists yet, first credential bootstrap is accepted without HMAC auth.
-- v1.3.0: when `requireBootstrapClientId` is set, only `POST` for the named clientId is accepted while the bootstrap-lock is active; `PUT` / `PATCH` / `DELETE` and any other `POST` are refused with HTTP 403 `BOOTSTRAP_LOCKED`.
+- Since v1.4.0 the bootstrap-window lock is always active; only `POST` for the resolved propagation clientId (default `self_propagation_signer`) is accepted while locked. `PUT` / `PATCH` / `DELETE` and any other `POST` are refused with HTTP 403 `BOOTSTRAP_LOCKED`.
 
 ### Propagate to one or many APIs
 
@@ -280,9 +280,9 @@ const targetRevert = await hmacAuth.propagateClientToApis({
 });
 ```
 
-## 10) Bootstrap lock + propagation-only credentials (v1.3.0)
+## 10) Bootstrap lock + propagation-only credentials (default since v1.4.0)
 
-Two opt-in hardenings designed to be combined when an API delegates its credential lifecycle to an orchestrator (e.g. [`@naskot/node-hmac-auth-management`](https://github.com/padcmoi/node-hmac-auth)). Both are off by default; setting them changes only the bootstrap window and the per-credential cantonment.
+Two hardenings designed to be combined when an API delegates its credential lifecycle to an orchestrator (e.g. [`@naskot/node-hmac-auth-management`](https://github.com/padcmoi/node-hmac-auth)). The bootstrap lock is ALWAYS active since v1.4.0 - `requireBootstrapClientId` defaults to `"self_propagation_signer"` when omitted, so an out-of-the-box install joins the federation safely. Override the option only when you intentionally want a store isolated from the federation. The `propagation-only` purpose stays opt-in: tag a credential with it when you want the lib to refuse signed requests against any path other than the configured `internalManagementRoute`.
 
 ```ts
 const hmacAuth = initializeHmacHttpAuth({
@@ -354,7 +354,7 @@ export const hmacAuth = initializeHmacHttpAuth({
   secretToken: process.env.HMAC_SECRET_TOKEN, // strongly recommended
   internalManagementRoute: process.env.INTERNAL_MANAGEMENT_ROUTE ?? "/api/internal/hmac-auth", // optional: clientId propagation between APIs
   dbSeedBackupTtlSeconds: 600, // v1.2.0, TTL of credentials-backup keys; default 600
-  requireBootstrapClientId: process.env.HMAC_BOOTSTRAP_CLIENT_ID, // v1.3.0, optional (see §10)
+  requireBootstrapClientId: process.env.HMAC_BOOTSTRAP_CLIENT_ID, // optional override since v1.4.0 (defaults to "self_propagation_signer", see §10)
   onBadSignature: async (event) => {
     const meta = (event.metadata ?? {}) as {
       ip?: string;

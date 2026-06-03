@@ -130,7 +130,7 @@ The payload sent to the target carries `secretHash` (never `secret`). The target
 
 The bootstrap-then-auth rule on the internal-management route is unchanged: when target Redis has zero clients, the first POST is accepted without signature. Beyond that, the verifier in `server/verify.ts` runs to completion.
 
-## v1.3.0 additions
+## v1.3.0 additions (made the default in v1.4.0)
 
 Three strictly additive features layered on top of the v1.2.0 surface. Defaults reproduce v1.2.x byte-identical behavior; opt-in switches activate the new enforcement layers.
 
@@ -153,7 +153,8 @@ Three strictly additive features layered on top of the v1.2.0 surface. Defaults 
 
 ### Feature 3 — formal wire contract & test vectors
 
-- `docs/wire-contract.md` becomes the single source of truth for the wire (cryptographic primitives, headers, Redis layout, internal-management route shape, error codes, v1.3.0 additions). Cross-language ports (Python, Go, Rust, Java, ...) certify against this document.
+- `docs/wire-contract.md` becomes the single source of truth for the wire (cryptographic primitives, headers, Redis layout, internal-management route shape, error codes, v1.3.0 additions).
+- v1.4.0: the bootstrap-window lock defaults to active (`requireBootstrapClientId` defaults to `"self_propagation_signer"`); see [docs/release-notes/1.4.0.md](release-notes/1.4.0.md). Cross-language ports (Python, Go, Rust, Java, ...) certify against this document.
 - `test/vectors/`:
   - `hash-client-secret.json` — 20 deterministic cases of `hashClientSecret(secret, secretToken)`.
   - `sign-request.json` — 33 deterministic cases of `signRequest({...})` covering all HTTP methods, varied paths and bodies, unicode and long inputs.

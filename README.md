@@ -67,7 +67,7 @@ SHA256(BODY)
   - `options.onBadSignature?(event)`
   - `options.internalManagementRoute?` (ex: `/api/internal/hmac`)
   - `options.dbSeedBackupTtlSeconds?` (v1.2.0, default 600)
-  - `options.requireBootstrapClientId?` (v1.3.0; refuses every signed request and every non-named management write until the named clientId is stored — see [docs/wire-contract.md](./docs/wire-contract.md))
+  - `options.requireBootstrapClientId?` (default `"self_propagation_signer"` since v1.4.0; the bootstrap-window lock is always active and refuses every signed request + every non-named management write until the resolved clientId is stored locally — see [docs/wire-contract.md](./docs/wire-contract.md))
 
 `event` contains `clientId`, `method`, `path`, `timestamp`, `nonce`, `receivedSignature`, `expectedSignature`, `headers`, `rawBody`, and optional `metadata`.
 
@@ -77,7 +77,7 @@ SHA256(BODY)
   - `options.defaultSecretLengthBytes?`
   - `options.secretToken?`
   - `options.dbSeedBackupTtlSeconds?` (v1.2.0, default 600)
-  - `options.requireBootstrapClientId?` (v1.3.0; same semantics as the HTTP variant)
+  - `options.requireBootstrapClientId?` (default `"self_propagation_signer"` since v1.4.0; same semantics as the HTTP variant)
 
 ### Verify helpers
 
@@ -109,7 +109,7 @@ Enabled only when `internalManagementRoute` is configured.
 
 Route behavior for `internalManagementRoute`:
 
-- `GET`: healthcheck (always open; v1.3.0+ also emits `bootstrapLocked` in the body)
+- `GET`: healthcheck (always open; the body emits `bootstrapLocked: true` as long as the federation-default clientId is not stored)
 - `POST`: create/propagate client (`201` accepted, `403` refused)
 - `PUT`: update secret (`201` accepted, `403` refused)
 - `PATCH`: revert credential to the previous secretHash from the v1.2.0 TTL backup (`201` accepted, `403` refused)
@@ -118,11 +118,11 @@ Route behavior for `internalManagementRoute`:
 Security rule:
 
 - If at least one client exists, route requires valid HMAC auth.
-- If no client exists yet, bootstrap creation is allowed (first key).
-- v1.3.0: when `requireBootstrapClientId` is set, only `POST` for the named clientId is accepted while locked; `PUT` / `PATCH` / `DELETE` and `POST` for any other clientId are refused with HTTP 403 `BOOTSTRAP_LOCKED`.
+- While locked (the federation-default propagation clientId is not yet stored locally), only `POST` for that exact clientId is accepted; `PUT` / `PATCH` / `DELETE` and `POST` for any other clientId are refused with HTTP 403 `BOOTSTRAP_LOCKED`. The lock auto-releases the moment the propagation credential is written.
 
 ## Release notes
 
+- 1.4.0 — security release; closes a bootstrap-window gap present in 1.0.0-1.3.0 where the credential store accepted any first writer. `requireBootstrapClientId` now resolves to `"self_propagation_signer"` by default so a fresh install joins the federation safely. Versions 1.0.0-1.3.0 are deprecated. ([docs/release-notes/1.4.0.md](./docs/release-notes/1.4.0.md))
 - 1.3.0 — `purpose: "propagation-only"` credential cantonment + `requireBootstrapClientId` bootstrap-window lock + canonical wire contract & test vectors ([docs/release-notes/1.3.0.md](./docs/release-notes/1.3.0.md))
 - 1.2.0 — dynamic DB-seed origin marker, TTL backup, REVERT operation ([docs/release-notes/1.2.0.md](./docs/release-notes/1.2.0.md))
 - 1.1.1 — re-export `HmacPropagateTargetStore` + `HmacMessageAuthBridge` from the index (fix omitted in 1.1.0) ([docs/release-notes/1.1.1.md](./docs/release-notes/1.1.1.md))

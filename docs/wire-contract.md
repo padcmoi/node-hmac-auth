@@ -2,7 +2,7 @@
 
 This document is the canonical specification of the HMAC wire used by `@naskot/node-hmac-auth`. It is the single source of truth for cross-language ports (Python, Go, Rust, Java, ...) targeting interoperability with Node consumers. Every cryptographic primitive, header name, payload shape, and error code listed below is normative.
 
-The current contract level is `v1.3.0`. Lower-level conformance is supported: a target may declare itself compatible at `v1.0.0`, `v1.1.0`, `v1.2.0`, or `v1.3.0`. Each section flags the version that introduced the behavior.
+The current contract level is `v1.4.0`. Lower-level conformance is supported for historical readers, but published versions before v1.4.0 are deprecated for security reasons (the bootstrap-window lock was opt-in). Each section flags the version that introduced the behavior.
 
 > Companion artifacts (also normative):
 >
@@ -81,7 +81,7 @@ The path is configured by the consumer (typically `/api/internal/hmac`) and is t
 | `PATCH`  | revert (`v1.2.0+`) | Restores the previous `secretHash` from the TTL backup.                 |
 | `DELETE` | delete             | Drops the credential.                                                   |
 
-The bootstrap window: when local Redis holds zero credentials AND `requireBootstrapClientId` is unset, the FIRST request on this route is accepted without signature verification (the initial seed). Once `clientsCount >= 1`, every request MUST carry a valid signature. See `v1.3.0` below for the tightened lock.
+The bootstrap window (v1.4.0): when local Redis holds zero credentials, the FIRST POST whose `clientId` equals the resolved propagation clientId (default `"self_propagation_signer"`) is accepted without signature verification (the initial seed). Once that credential is stored, every request MUST carry a valid signature. Pre-v1.4.0 levels relied on the operator to opt in to the lock and are deprecated.
 
 ### Health response body (GET)
 
@@ -185,33 +185,33 @@ The lib organises keys under a configurable `<namespace>` (defaults to the resol
 
 Errors are surfaced as the JSON body `{ "error": "<CODE>", "message": "<text>" }`. The HTTP status is set to the value listed below.
 
-| Code                         | Status | Introduced | Meaning                                                                                                                          |
-| ---------------------------- | ------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------- |
-| `MISSING_CLIENT_ID`          | 401    | v1.0.0     | `x-client-id` header missing.                                                                                                    |
-| `MISSING_SIGNATURE`          | 401    | v1.0.0     | `x-signature` header missing.                                                                                                    |
-| `MISSING_TIMESTAMP`          | 401    | v1.0.0     | `x-timestamp` header missing.                                                                                                    |
-| `MISSING_NONCE`              | 401    | v1.0.0     | `x-nonce` header missing.                                                                                                        |
-| `INVALID_TIMESTAMP`          | 401    | v1.0.0     | `x-timestamp` is not a finite number.                                                                                            |
-| `TIMESTAMP_SKEW`             | 401    | v1.0.0     | `                                                                                                                                | now - timestamp | > maxSkewMs`. |
-| `UNKNOWN_CLIENT`             | 401    | v1.0.0     | `x-client-id` is not in the local store.                                                                                         |
-| `CLIENT_EXPIRED`             | 401    | v1.0.0     | The credential's `expiresAt` has passed.                                                                                         |
-| `MISSING_CLIENT_IP`          | 403    | v1.0.0     | Client IP could not be resolved and the credential has an IP allowlist.                                                          |
-| `CLIENT_IP_NOT_ALLOWED`      | 403    | v1.0.0     | Client IP fails the credential's IP allowlist.                                                                                   |
-| `CLIENT_NOT_FOUND`           | 404    | v1.0.0     | Internal lifecycle call on a missing clientId.                                                                                   |
-| `BAD_SIGNATURE`              | 401    | v1.0.0     | Signature compare failed (constant-time).                                                                                        |
-| `REPLAYED_NONCE`             | 401    | v1.0.0     | Nonce previously consumed.                                                                                                       |
-| `INTERNAL_ROUTE_DISABLED`    | 400    | v1.0.0     | `internalManagementRoute` was not configured.                                                                                    |
-| `METHOD_NOT_ALLOWED`         | 405    | v1.0.0     | Verb other than GET/POST/PUT/PATCH/DELETE on the management route.                                                               |
-| `FORBIDDEN`                  | 403    | v1.0.0     | Generic management-route refusal (duplicate clientId, unsupported kind, missing required field, ...).                            |
-| `INTERNAL_ERROR`             | 500    | v1.0.0     | Unexpected internal failure.                                                                                                     |
-| `PROPAGATION_ONLY_FORBIDDEN` | 403    | v1.3.0     | A credential with `purpose: "propagation-only"` was used to sign a request that is not the configured `internalManagementRoute`. |
-| `BOOTSTRAP_LOCKED`           | 403    | v1.3.0     | The API was initialized with `requireBootstrapClientId` and the named credential is not yet stored.                              |
+| Code                         | Status | Introduced | Meaning                                                                                                                               |
+| ---------------------------- | ------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------------- | --------------- | ------------- |
+| `MISSING_CLIENT_ID`          | 401    | v1.0.0     | `x-client-id` header missing.                                                                                                         |
+| `MISSING_SIGNATURE`          | 401    | v1.0.0     | `x-signature` header missing.                                                                                                         |
+| `MISSING_TIMESTAMP`          | 401    | v1.0.0     | `x-timestamp` header missing.                                                                                                         |
+| `MISSING_NONCE`              | 401    | v1.0.0     | `x-nonce` header missing.                                                                                                             |
+| `INVALID_TIMESTAMP`          | 401    | v1.0.0     | `x-timestamp` is not a finite number.                                                                                                 |
+| `TIMESTAMP_SKEW`             | 401    | v1.0.0     | `                                                                                                                                     | now - timestamp | > maxSkewMs`. |
+| `UNKNOWN_CLIENT`             | 401    | v1.0.0     | `x-client-id` is not in the local store.                                                                                              |
+| `CLIENT_EXPIRED`             | 401    | v1.0.0     | The credential's `expiresAt` has passed.                                                                                              |
+| `MISSING_CLIENT_IP`          | 403    | v1.0.0     | Client IP could not be resolved and the credential has an IP allowlist.                                                               |
+| `CLIENT_IP_NOT_ALLOWED`      | 403    | v1.0.0     | Client IP fails the credential's IP allowlist.                                                                                        |
+| `CLIENT_NOT_FOUND`           | 404    | v1.0.0     | Internal lifecycle call on a missing clientId.                                                                                        |
+| `BAD_SIGNATURE`              | 401    | v1.0.0     | Signature compare failed (constant-time).                                                                                             |
+| `REPLAYED_NONCE`             | 401    | v1.0.0     | Nonce previously consumed.                                                                                                            |
+| `INTERNAL_ROUTE_DISABLED`    | 400    | v1.0.0     | `internalManagementRoute` was not configured.                                                                                         |
+| `METHOD_NOT_ALLOWED`         | 405    | v1.0.0     | Verb other than GET/POST/PUT/PATCH/DELETE on the management route.                                                                    |
+| `FORBIDDEN`                  | 403    | v1.0.0     | Generic management-route refusal (duplicate clientId, unsupported kind, missing required field, ...).                                 |
+| `INTERNAL_ERROR`             | 500    | v1.0.0     | Unexpected internal failure.                                                                                                          |
+| `PROPAGATION_ONLY_FORBIDDEN` | 403    | v1.3.0     | A credential with `purpose: "propagation-only"` was used to sign a request that is not the configured `internalManagementRoute`.      |
+| `BOOTSTRAP_LOCKED`           | 403    | v1.4.0     | The bootstrap-window lock is active: the resolved propagation clientId (default `self_propagation_signer`) is not yet stored locally. |
 
 ## Plane B: dynamic control plane (recap)
 
 A target that supports `v1.2.0+` honors `fromDbSeed: true` by writing a TTL backup of the previous `secretHash` on rotation (under `<namespace>:credentials-backup:<clientId>`) and accepts `PATCH` to restore it. A target stuck at `v1.0.0` / `v1.1.0` accepts rotations but provides no rollback path (PATCH returns 404 if the route is enabled; `reverted: false` if the route exists but no backup is present). Orchestrators built on top (`@naskot/node-hmac-auth-management`) MUST inspect target health before propagating credentials that need atomic rollback. See [docs/architecture.md](./architecture.md#two-control-planes-since-120) for the complete two-plane model.
 
-## v1.3.0 additions
+## v1.3.0 additions (made mandatory by default in v1.4.0)
 
 Three additive features. Defaults reproduce v1.2.x byte-identical behavior.
 
@@ -239,7 +239,7 @@ Three additive features. Defaults reproduce v1.2.x byte-identical behavior.
 1. Implement the cryptographic primitives in the target language.
 2. Run all hash vectors: for each case, compute `hashClientSecret(secret, secretToken)` and check `expectedHex`.
 3. Run all sign vectors: for each case, compute `signRequest({method, path, timestamp, nonce, body, secret})` and check `expectedHex`.
-4. Implement an HTTP server that exposes the internal management route per this contract. Run each flow in `internal-route-flows.json` whose `level` is `<= v1.3.0`.
+4. Implement an HTTP server that exposes the internal management route per this contract. Run each flow in `internal-route-flows.json` whose `level` is `<= v1.4.0`.
 5. Bundle a signed-fetch client and exchange requests with the reference Node target shipped in `poc/`.
 
 Targets passing 1-3 are wire-compatible. Targets passing 4 are management-route compatible. Targets passing 5 are end-to-end compatible.
