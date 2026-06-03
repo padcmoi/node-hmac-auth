@@ -4,6 +4,23 @@ All notable changes to this project are documented in this file.
 
 Only Conventional Commit types `feat`, `fix`, `chore`, and `docs` are listed below.
 
+## [1.4.0] - 2026-06-02
+
+Security release. Closes a bootstrap-window gap present in 1.0.0-1.3.0 where the credential store accepted any first writer on the internal management route. The federation-default `requireBootstrapClientId` (`self_propagation_signer`) is now applied unconditionally and the lib defaults to it when the option is omitted, so a fresh install joins the federation safely out of the box. Override `requireBootstrapClientId` to deliberately isolate a store from the federation.
+
+- `feat(core): InitializeHmacHttpAuthOptions.requireBootstrapClientId defaults to "self_propagation_signer" when omitted; the bootstrap lock is now always active`
+- `feat(message): InitializeHmacMessageAuthOptions.requireBootstrapClientId mirrors the HTTP track default; signMessage/verifyMessage are gated by the same lock`
+- `feat(http): ExpressHmacMiddlewareOptions.requireBootstrapClientId propagated through createExpressHttpHmacMiddleware and createHttpMiddlewareFactory with the same default`
+- `feat(http): exported DEFAULT_PROPAGATION_KEY_CLIENT_ID constant so consumers and downstream libs reuse the federation value verbatim`
+
+### Upgrade path
+
+Most consumers need no code change: omitting `requireBootstrapClientId` now resolves to the federation-default and locks the store, which matches the documented use case from day 1. Consumers who passed a different name (intentionally isolating from the federation) keep working unchanged. Consumers who relied on the implicit "no lock" mode introduced in earlier releases must seed the propagation credential at boot (the lib's auto-seed in `@naskot/node-hmac-auth-management >=0.1.0` handles this for orchestrated setups).
+
+### Why prior versions are deprecated
+
+1.0.0 through 1.3.0 accepted any first POST on the internal management route, which let an attacker reach the credential store before legitimate bootstrap. The window is closed in 1.4.0. The earlier versions are marked deprecated via `npm deprecate "<1.4.0"` and should not be used.
+
 ## [1.3.0] - 2026-06-01
 
 Minor release. Strictly additive on top of 1.2.x. 1.0.x/1.1.x/1.2.x consumers upgrade without code, wire, or Redis-layout change. Defaults reproduce 1.2.x byte-identical behavior; opt-in via the two new options below.
