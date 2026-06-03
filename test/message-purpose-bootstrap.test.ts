@@ -3,18 +3,18 @@ import { initializeHmacMessageAuth } from "../src/index.js";
 import { FakeRedis } from "./helpers/test-utils.js";
 
 /**
- * v1.3.0: the message track honors the same purpose + bootstrap-lock
- * semantics as the HTTP track. Messages have no path concept, so a
- * propagation-only credential is refused outright on both signMessage and
- * verifyMessage.
+ * v1.3.0 / v1.4.0: the message track honors the same purpose +
+ * bootstrap-lock semantics as the HTTP track. Messages have no path
+ * concept, so a propagation-only credential is refused outright on both
+ * signMessage and verifyMessage. v1.4.0 also makes
+ * `requireBootstrapClientId` mandatory at boot.
  */
-describe("HMAC auth - v1.3.0 - message track purpose & bootstrap", () => {
+describe("HMAC auth - message track purpose & bootstrap", () => {
   it("signMessage and verifyMessage are locked until the bootstrap clientId is stored", async () => {
     const redis = new FakeRedis();
     const messageAuth = initializeHmacMessageAuth({
       redis,
       namespace: "tenant_msg_bootstrap",
-      requireBootstrapClientId: "self_propagation_signer",
     });
     await messageAuth.clients.setSecret("amqp_orders", "orders_secret");
 

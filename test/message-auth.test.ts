@@ -45,10 +45,8 @@ describe("HMAC auth - message", () => {
 
   it("supports Redis-backed message sign/verify without anti-replay or skew checks", async () => {
     const redis = new FakeRedis();
-    const messageAuth = initializeHmacMessageAuth({
-      redis,
-      namespace: "tenant_msg",
-    });
+    const messageAuth = initializeHmacMessageAuth({ redis, namespace: "tenant_msg" });
+    await messageAuth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     await messageAuth.clients.setSecret("app_msg", "msg_secret");
 
     const signed = await messageAuth.signMessage({
@@ -90,10 +88,8 @@ describe("HMAC auth - message", () => {
 
   it("supports message regenerateSecret with provided plainSecret", async () => {
     const redis = new FakeRedis();
-    const messageAuth = initializeHmacMessageAuth({
-      redis,
-      namespace: "tenant_msg_regen_plain",
-    });
+    const messageAuth = initializeHmacMessageAuth({ redis, namespace: "tenant_msg_regen_plain" });
+    await messageAuth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await messageAuth.clients.create({
       clientId: "app_msg_regen",

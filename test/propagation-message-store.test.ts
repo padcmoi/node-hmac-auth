@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { initializeHmacHttpAuth, initializeHmacMessageAuth } from "../src/index.js";
-import { FakeRedis } from "./helpers/test-utils.js";
+import { buildHttpSignedHeaders, initializeHmacHttpAuth, initializeHmacMessageAuth } from "../src/index.js";
+import { FakeRedis, headersToRecord } from "./helpers/test-utils.js";
 
 /**
  * v1.1.0 message-store propagation contract:
@@ -16,11 +16,8 @@ import { FakeRedis } from "./helpers/test-utils.js";
 describe("HMAC auth - propagation - message store (v1.1.0)", () => {
   it("targetStore='message' ships payload.kind='message' and falls back to messageAuth Redis", async () => {
     const redis = new FakeRedis();
-    const messageAuth = initializeHmacMessageAuth({
-      redis,
-      namespace: "tenant_msg",
-      secretToken: "tenant_specific_pepper",
-    });
+    const messageAuth = initializeHmacMessageAuth({ redis, namespace: "tenant_msg", secretToken: "tenant_specific_pepper" });
+    await messageAuth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
     const auth = initializeHmacHttpAuth({
       redis,
       namespace: "tenant_http_with_msg",
@@ -29,6 +26,7 @@ describe("HMAC auth - propagation - message store (v1.1.0)", () => {
       maxSkewMs: 5000,
       messageAuth,
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     const seeded = await messageAuth.clients.create({
       clientId: "msg_only",
@@ -71,6 +69,7 @@ describe("HMAC auth - propagation - message store (v1.1.0)", () => {
       maxSkewMs: 5000,
       // messageAuth intentionally omitted
     });
+    await auth.clients.setSecret("self_propagation_signer", "test_bootstrap_secret");
 
     await expect(
       auth.propagateClientToApis({
@@ -93,22 +92,35 @@ describe("HMAC auth - propagation - message store (v1.1.0)", () => {
       maxSkewMs: 5000,
       // messageAuth intentionally omitted on the target
     });
+    await auth.clients.setSecret("self_propagation_signer", "prop_secret", undefined, undefined, {
+      purpose: "propagation-only",
+    });
 
-    const rawBody = Buffer.from(
-      JSON.stringify({
-        clientId: "ghost",
-        secretHash: "a".repeat(64),
-        allowedIps: [],
-        kind: "message",
+    const rawBody = JSON.stringify({
+      clientId: "ghost",
+      secretHash: "a".repeat(64),
+      allowedIps: [],
+      kind: "message",
+    });
+    const timestamp = Date.now();
+    const headers = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "POST",
+        url: "/api/internal/hmac",
+        body: rawBody,
+        clientId: "self_propagation_signer",
+        secret: "prop_secret",
+        timestamp,
+        nonce: "nonce_msg_forbidden",
       })
     );
 
     const result = await auth.handleInternalManagementRequest({
       method: "POST",
       path: "/api/internal/hmac",
-      headers: {},
+      headers,
       rawBody,
-      now: Date.now(),
+      now: timestamp,
     });
 
     expect(result.handled).toBe(true);
@@ -130,24 +142,37 @@ describe("HMAC auth - propagation - message store (v1.1.0)", () => {
       secretToken: "remote_pepper",
       messageAuth,
     });
+    await auth.clients.setSecret("self_propagation_signer", "prop_secret", undefined, undefined, {
+      purpose: "propagation-only",
+    });
 
     const sentHash = "b".repeat(64);
-    const rawBody = Buffer.from(
-      JSON.stringify({
-        clientId: "msg_arriving",
-        secretHash: sentHash,
-        allowedIps: [],
-        kind: "message",
+    const rawBody = JSON.stringify({
+      clientId: "msg_arriving",
+      secretHash: sentHash,
+      allowedIps: [],
+      kind: "message",
+    });
+    const timestamp = Date.now();
+    const headers = headersToRecord(
+      buildHttpSignedHeaders({
+        method: "POST",
+        url: "/api/internal/hmac",
+        body: rawBody,
+        clientId: "self_propagation_signer",
+        secret: "prop_secret",
+        hashToken: "remote_pepper",
+        timestamp,
+        nonce: "nonce_msg_arriving",
       })
     );
 
-    // bootstrap path (no clients yet) so no HMAC signature required
     const result = await auth.handleInternalManagementRequest({
       method: "POST",
       path: "/api/internal/hmac",
-      headers: {},
+      headers,
       rawBody,
-      now: Date.now(),
+      now: timestamp,
     });
 
     expect(result.status).toBe(201);
