@@ -14,6 +14,7 @@ import type {
 import { createCredentialsClientsFactory } from "../stores/credentials-clients-factory.js";
 import { assertRedisClient, RedisCredentialStore, resolveNamespace, type RedisLikeClient } from "../stores/redis.js";
 import { signMessage as signMessageCore, verifyMessage as verifyMessageCore } from "./signature.js";
+import { DEFAULT_PROPAGATION_KEY_CLIENT_ID } from "../http/constants.js";
 
 const DEFAULT_SECRET_LENGTH_BYTES = 32;
 const DEFAULT_DB_SEED_BACKUP_TTL_SECONDS = 600;
@@ -73,10 +74,12 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
   const defaultSecretLengthBytes = options.defaultSecretLengthBytes ?? DEFAULT_SECRET_LENGTH_BYTES;
   const dbSeedBackupTtlSeconds = options.dbSeedBackupTtlSeconds ?? DEFAULT_DB_SEED_BACKUP_TTL_SECONDS;
   const secretToken = options.secretToken;
+  // v1.4.0: federation-default clientId for the bootstrap lock. Override via
+  // options to intentionally isolate the message store; omitted = canonical.
   const requireBootstrapClientId =
     typeof options.requireBootstrapClientId === "string" && options.requireBootstrapClientId.trim()
       ? options.requireBootstrapClientId.trim()
-      : undefined;
+      : DEFAULT_PROPAGATION_KEY_CLIENT_ID;
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
 
@@ -93,9 +96,6 @@ export function initializeHmacMessageAuth(options: InitializeHmacMessageAuthOpti
   // process lifetime (subsequent removes still pass through, since auth
   // happens on the HTTP plane).
   async function assertBootstrapUnlocked(): Promise<void> {
-    if (!requireBootstrapClientId) {
-      return;
-    }
     const bootstrapRecord = await credentialStore.getClientRecord(requireBootstrapClientId);
     if (!bootstrapRecord) {
       throw new HmacAuthError(
