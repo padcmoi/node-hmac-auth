@@ -11,7 +11,14 @@ const TARGETS = ["http://nest_target:3002", "http://express_target:3003"];
 // propagationPlans entry will be emitted WITHOUT a `secret` field; the lib
 // resolves the secretHash from the local Redis (where it landed thanks to the
 // matching internalCredentials entry that was synced earlier in syncFromConfig).
+//
+// v1.4.0: the FIRST entry MUST be `self_propagation_signer`. Each target boots
+// with the federation-default bootstrap lock active and only accepts an
+// unsigned POST for this exact clientId as the first write. Once the key is
+// stored on the target, every subsequent push is signed with it (see
+// `signerClientId: "self_propagation_signer"` on the propagation plans below).
 const PROPAGATED_CLIENTS = [
+  { clientId: "self_propagation_signer", secret: "propagationKeySecret-PK-001", usesLocalRedisLookup: true },
   { clientId: "internal_sync", secret: "superSecret" },
   { clientId: "external_client", secret: "superSharedSecret" },
   { clientId: "client_mobile", secret: "mobileSecret-aZ8Q12" },
@@ -30,12 +37,23 @@ const PROPAGATED_CLIENTS = [
 // Each one is declared locally in hmacMessage.credentials (so syncFromConfig
 // creates it in the source message store) AND in propagationPlans below with
 // targetStore: "message" so it lands on each remote's message store too.
-const MESSAGE_CLIENTS = [{ clientId: "msg_amqp_orders", secret: "msgOrdersSecret-MO-001" }];
+// v1.4.0: include `self_propagation_signer` so the propagation plan pushes
+// it to each target's MESSAGE store too. Without this, the target's
+// message store stays locked (signMessage/verifyMessage refuse with
+// BOOTSTRAP_LOCKED) and the cross-token message verify sweep fails.
+const MESSAGE_CLIENTS = [
+  { clientId: "self_propagation_signer", secret: "propagationKeySecret-PK-001" },
+  { clientId: "msg_amqp_orders", secret: "msgOrdersSecret-MO-001" },
+];
 
 export const microserviceConfig: MicroserviceConfigTemplate = {
   version: "1",
   hmac_config: {
     hmacMessage: {
+      // v1.4.0: same bootstrap lock as the HTTP track. `self_propagation_signer`
+      // (first entry of MESSAGE_CLIENTS via the spread) seeds the source-side
+      // message store so signMessage works, and gets propagated to each
+      // target's message store so verifyMessage works there too.
       credentials: [{ clientId: "internal_sync", secret: "superSecret" }, ...MESSAGE_CLIENTS],
     },
     hmacHttp: {
@@ -57,7 +75,7 @@ export const microserviceConfig: MicroserviceConfigTemplate = {
       propagationPlans: [
         ...PROPAGATED_CLIENTS.map((entry) => {
           const base = {
-            signerClientId: "internal_sync",
+            signerClientId: "self_propagation_signer",
             targets: TARGETS,
             clientId: entry.clientId,
             allowedIps: ["0.0.0.0/0", "::/0"],
@@ -75,7 +93,7 @@ export const microserviceConfig: MicroserviceConfigTemplate = {
         // verifyHttpSignature). The `targetStore: "message"` flag tells the
         // remote to write the propagated client into its message store.
         ...MESSAGE_CLIENTS.map((entry) => ({
-          signerClientId: "internal_sync",
+          signerClientId: "self_propagation_signer",
           targets: TARGETS,
           clientId: entry.clientId,
           secret: entry.secret,
