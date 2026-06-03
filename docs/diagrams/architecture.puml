@@ -1,5 +1,5 @@
 @startuml architecture
-title @naskot/node-hmac-auth - Component overview
+title @naskot/node-hmac-auth - Component overview (v1.4.0)
 
 skinparam componentStyle rectangle
 skinparam shadowing false
