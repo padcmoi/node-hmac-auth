@@ -22,7 +22,12 @@ import {
   type CreateHttpSignedFetchClientOptions,
   type SignedHttpFetchClientCallOptions,
 } from "./client/signed-fetch.js";
-import { DEFAULT_DB_SEED_BACKUP_TTL_SECONDS, DEFAULT_MAX_SKEW_MS, DEFAULT_SECRET_LENGTH_BYTES } from "./constants.js";
+import {
+  DEFAULT_DB_SEED_BACKUP_TTL_SECONDS,
+  DEFAULT_MAX_SKEW_MS,
+  DEFAULT_PROPAGATION_KEY_CLIENT_ID,
+  DEFAULT_SECRET_LENGTH_BYTES,
+} from "./constants.js";
 import { assertSecretLength, normalizeRoutePath } from "./internal-helpers.js";
 import { createInternalManagementHandler } from "./internal-management.js";
 import { createHttpMiddlewareFactory, createInternalManagementMiddlewareFactory } from "./middlewares.js";
@@ -111,10 +116,14 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
   assertSecretLength(defaultSecretLengthBytes);
   const credentialStore = new RedisCredentialStore(options.redis, namespace);
   const messageAuth = options.messageAuth;
+  // v1.4.0: federation-default clientId for the bootstrap lock. Consumers may
+  // override via `requireBootstrapClientId` (intentional isolation), but the
+  // omitted-default is ALWAYS the canonical name so an out-of-the-box install
+  // joins the federation automatically.
   const requireBootstrapClientId =
     typeof options.requireBootstrapClientId === "string" && options.requireBootstrapClientId.trim()
       ? options.requireBootstrapClientId.trim()
-      : undefined;
+      : DEFAULT_PROPAGATION_KEY_CLIENT_ID;
 
   const verifyHttpSignature = async (input: VerifyHttpWithRedisInput): Promise<VerifiedHttpRequest> =>
     verifyHttpSignatureCore({
@@ -125,7 +134,7 @@ export function initializeHmacHttpAuth(options: InitializeHmacHttpAuthOptions): 
       onBadSignature: input.onBadSignature ?? options.onBadSignature,
       metadata: input.metadata,
       internalManagementRoute,
-      requireBootstrapClientId,
+      requireBootstrapClientId: input.requireBootstrapClientId ?? requireBootstrapClientId,
     });
 
   const clients = createCredentialsClientsFactory({
